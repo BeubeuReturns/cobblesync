@@ -9,6 +9,7 @@ out/
 *.iml
 .vscode/
 .claude
+CLAUDE.md
 
 # Run directory (serveur de test Minecraft)
 run/
