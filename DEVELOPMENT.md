@@ -1,10 +1,9 @@
-# CobbleSync — developer notes
+# CobbleSync - developer notes
 
 Fabric mod for Cobblemon that serves a self-hosted web dashboard showing each
-player's pokédex progress — caught/seen/forms/shiny, in real time.
+player's pokédex progress - caught/seen/forms/shiny, in real time.
 
-For the full history of decisions and version gotchas, see `CLAUDE.md`. This
-file only keeps what's true *today*.
+
 
 ## Architecture
 
@@ -12,12 +11,12 @@ file only keeps what's true *today*.
   no external dependency), BlueMap-style.
 - The frontend (`src/main/resources/web/`) is vanilla HTML/CSS/JS, no build
   step. Extracted once to `config/cobblesync/web/` on first start
-  (customizable afterward — the mod never overwrites that folder).
+  (customizable afterward - the mod never overwrites that folder).
 - Data comes from Cobblemon's Kotlin APIs (`PokedexManager`,
   `PlayerInstancedDataStoreManager`, `PokemonSpecies`, `CobblemonSpawnPools`),
   never from parsing save files.
 - Real-time updates via SSE (`/api/players/{uuid}/events`), pushed on
-  `CobblemonEvents.POKEDEX_DATA_CHANGED_POST` — no polling.
+  `CobblemonEvents.POKEDEX_DATA_CHANGED_POST`  no polling.
 
 ## Project layout
 
@@ -85,12 +84,12 @@ src/main/resources/
 | `GET /api/leaderboard/events` | SSE, update signal for the leaderboard |
 
 The `tier` field (`caught`/`seen`/`unregistered`) is a stable vocabulary
-owned by this API, derived via `.ordinal` — never from Cobblemon's raw enum
+owned by this API, derived via `.ordinal` - never from Cobblemon's raw enum
 name, which changed between versions (`NONE/ENCOUNTERED/CAUGHT` in 1.7.3 vs
 `UNREGISTERED/SEEN/OWNED` later). `knowledgeRaw` keeps the raw name for
 debugging only.
 
-`caughtAtMillis` (present once a species is caught) isn't a Cobblemon field —
+`caughtAtMillis` (present once a species is caught) isn't a Cobblemon field -
 Cobblemon doesn't track catch dates. `CaptureDates` records it itself the
 first time `POKEDEX_DATA_CHANGED_POST` reports a species reaching "caught"
 (`event.knowledge.ordinal == 2`), identifying the species via
@@ -100,51 +99,34 @@ existed simply have no recorded date.
 `CaptureLog` records the same "genuinely new capture" transitions (reusing
 `CaptureDates.recordIfMissing`'s return value to avoid double-detection
 logic), keyed by player + species + shiny flag (`event.dataSource.pokemon.shiny`).
-It's a flat, capped (200 entries) rolling log, not tied to any one player —
+It's a flat, capped (200 entries) rolling log, not tied to any one player -
 powers the persistent Activity panel, a cross-player feed independent of
 which player tab is selected.
 
 `PlayerProgress.summarize` is the one place that computes "which species
-count, what tier" for a given player — extracted out of `PokedexHandler` so
+count, what tier" for a given player - extracted out of `PokedexHandler` so
 `LeaderboardHandler` (looping every known player) uses the exact same
 denominator instead of a second, possibly-diverging filter.
 `PlayerProgress.relevantSpeciesIds` alone is the shared "known species"
 filter (implemented OR in the spawn pool); `summarize` builds on it but
-doesn't produce per-species JSON (no `CobblemonLang` calls) — that stays in
+doesn't produce per-species JSON (no `CobblemonLang` calls) - that stays in
 `PokedexHandler`, which needs the detail the leaderboard doesn't.
 
 `DiscordNotifier` posts on the same event hook as `CaptureLog`/`CaptureDates`
 (`POKEDEX_DATA_CHANGED_POST`), gated by `discord.conf`. Fire-and-forget on
 its own single-thread daemon executor (`java.net.http.HttpClient`, no extra
-dependency) — never blocks the Cobblemon event-dispatch thread, and keeps
+dependency) - never blocks the Cobblemon event-dispatch thread, and keeps
 working even if `webserver.conf enabled=false` (dashboard off, webhook still
 wanted), since it has its own lifecycle separate from `CobbleSyncWebServer`.
 A capture that is both a first-ever species catch *and* shiny only posts the
 shiny message (see the `else if` in `CobbleSync.kt`'s event subscription).
 
-The 1v1 comparison panel has no dedicated endpoint — it fetches
+The 1v1 comparison panel has no dedicated endpoint - it fetches
 `/api/players/{uuid}/pokedex` for both selected players and diffs
 client-side (`renderComparisonSide` in `app.js`). No SSE hookup: it's an
 on-demand check (re-select a player to refresh), not an ambient panel like
 Activity/Leaderboard.
 
-## Build & dev deployment
-
-```
-./gradlew build
-```
-
-Produces `build/libs/cobblesync-<version>.jar`. There's no Gradle task to
-auto-deploy — copy it to your test profile's `mods/` folder by hand.
-
-**Gotcha**: `StaticFileExtractor` only extracts `web/` if it doesn't already
-exist in `config/cobblesync/`, so it never overwrites an admin's
-customization. In dev, after editing `web/*.html|css|js`, either copy the
-folder manually into `config/cobblesync/web/`, or delete that folder to force
-a re-extraction on next launch.
-
-**JDK**: the build targets Java 21 (`org.gradle.java.home` in
-`gradle.properties`, independent from the system `JAVA_HOME`).
 
 ## Configuration (`config/cobblesync/webserver.conf`)
 
@@ -159,41 +141,10 @@ port=8080
 ```
 enabled=false          # set to true and fill webhook-url to enable
 webhook-url=
-language=en             # en or fr — independent of any dashboard viewer's toggle
+language=en             # en or fr - independent of any dashboard viewer's toggle
 notify-shiny=true       # post on every shiny catch
 notify-new-species=false  # post on a player's first-ever catch of a species
 ```
-
-Not yet implemented: "rare" (spawn-rarity) and "100% species complete"
-triggers — see Known limitations below.
-
-## Known limitations
-
-- **No access control**: anyone on the network reaching the port sees every
-  player's pokédex. Fine for a private/friends server, needs addressing
-  before any public release.
-- **Cobblemon version drift**: the mod compiles against the published
-  Modrinth jar (`cobblemon_version` in `gradle.properties`), which can lag
-  behind the source repo (different enum names, missing fields). Never
-  assume a method seen in the local source repo compiles against the
-  actually-declared jar without checking.
-- **"100%" completion badge** (gold border): reliable for forms/shiny/gender
-  (genders validated via `Species.possibleGenders`, not guessed), but an
-  addon adding species without listing them in the spawn pool or marking
-  them `implemented` stays invisible in `totalKnownSpecies`.
-- **Biome color by dimension**: hardcoded list of vanilla Nether/End biomes
-  on the frontend (no extra Minecraft/Cobblemon API call, to limit version
-  risk) — a modded Nether/End biome from a compat addon defaults to the
-  overworld color.
-- **Not tested on a real dedicated multiplayer server** (singleplayer only so
-  far) — concurrent SSE connections and multi-player tabs still need
-  validation.
-- **Discord "rare" and "100% complete" triggers not implemented**: spawn
-  rarity is only computed ad hoc inside `SpeciesInfoHandler` per request
-  (not cached/reusable at capture-event time), and species completion is
-  currently JS-only logic (`isFullyComplete()` in `app.js`) with no
-  server-side equivalent. Both are addable later without changing
-  `DiscordConfig`'s shape much (just new boolean fields + hook calls).
 
 ## Before publishing (Modrinth/CurseForge)
 
