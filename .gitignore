@@ -1,0 +1,17 @@
+# Gradle
+.gradle/
+build/
+bin/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.claude
+
+# Run directory (serveur de test Minecraft)
+run/
+
+# Logs
+*.log

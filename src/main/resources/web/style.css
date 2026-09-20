@@ -1,0 +1,1390 @@
+:root {
+  color-scheme: light;
+  /* Light blue-cyan tint (Pokédex screen) — B > G on purpose to avoid teal. */
+  --surface-1:      #f2fafd;
+  --surface-2:      #e8f5fa;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --gridline:       #d3e8f0;
+  --border:         rgba(8, 55, 90, 0.14);
+  /* Pokédex-device red, replaces the generic accent */
+  --accent:         #d6362c;
+  --accent-track:   #f7d9d6;
+  --status-good:    #0ca30c;
+  --status-good-bg: rgba(12, 163, 12, 0.12);
+  --status-warn:    #d68a1f;
+  --status-bad:     #c0392b;
+  --neutral-bg:     rgba(82, 81, 78, 0.10);
+  --shiny-color:    #e8b923;
+  /* Sequential ramp (single hue, light->dark) for base-stat bars — weakest to strongest.
+     Validated with the dataviz skill's palette checker (ordinal mode). */
+  --stat-tier-1: #e9897d;
+  --stat-tier-2: #dd6459;
+  --stat-tier-3: #d6362c;
+  --stat-tier-4: #b8241b;
+  --stat-tier-5: #8f180f;
+  --radius: 3px;
+  /* Monocraft (OFL) bundled in web/fonts/ — not on Google Fonts, unlike Press Start 2P before
+     it. License in web/fonts/Monocraft-LICENSE.txt. */
+  --font-pixel: "Monocraft", "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-digital: var(--font-pixel);
+  --bezel: #8b8f94;
+  --bezel-dark: #55585c;
+  --bezel-shadow: rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --surface-1:      #101f28;
+    --surface-2:      #071119;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #1c3140;
+    --border:         rgba(100, 190, 230, 0.16);
+    --accent:         #ef5049;
+    --accent-track:   rgba(239, 80, 73, 0.20);
+    --status-good:    #0ca30c;
+    --status-good-bg: rgba(12, 163, 12, 0.18);
+    --status-warn:    #e2a03f;
+    --status-bad:     #e5544a;
+    --neutral-bg:     rgba(195, 194, 183, 0.12);
+    --stat-tier-1: #8f4038;
+    --stat-tier-2: #b84a3f;
+    --stat-tier-3: #df5c4f;
+    --stat-tier-4: #f4746a;
+    --stat-tier-5: #ffa89e;
+    --bezel:          #3a3d40;
+    --bezel-dark:     #1c1e20;
+    --bezel-shadow:   rgba(0, 0, 0, 0.6);
+  }
+}
+
+@font-face {
+  font-family: "Monocraft";
+  src: url("fonts/Monocraft.ttf") format("truetype");
+  font-display: swap;
+}
+
+/* Monocraft is a pixel font but much more compact than Press Start 2P (normal code-font
+   proportions) — root size more generous than the previous setting. */
+html {
+  font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem 1rem;
+  font-family: var(--font-pixel);
+  line-height: 1.6;
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+/* --- "Rotomdex" device shell ---------------------------------------------------------------- */
+
+.device {
+  max-width: min(1500px, 96vw);
+  margin: 0 auto;
+  background: var(--bezel);
+  padding: 18px;
+  border-radius: 22px;
+  /* Chamfered corners for a device-shell look instead of a plain rounded rectangle. */
+  clip-path: polygon(
+    28px 0, calc(100% - 28px) 0, 100% 28px,
+    100% calc(100% - 28px), calc(100% - 28px) 100%, 28px 100%,
+    0 calc(100% - 28px), 0 28px
+  );
+  box-shadow: 0 12px 30px var(--bezel-shadow);
+}
+
+.device-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--accent);
+  color: #ffffff;
+  padding: 0.6rem 1rem;
+  border-radius: 10px 10px 0 0;
+}
+
+.device-header h1 {
+  margin: 0;
+  font-size: 1rem;
+  font-family: var(--font-pixel);
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  text-align: center;
+  flex: 1;
+}
+
+.device-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.device-nav-arrow {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.7rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.device-nav-arrow:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.device-filter-toggle {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.device-filter-toggle:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.device-screen {
+  position: relative;
+  border-radius: 0 0 10px 10px;
+  background:
+    linear-gradient(var(--gridline) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gridline) 1px, transparent 1px),
+    var(--surface-1);
+  background-size: 28px 28px, 28px 28px, auto;
+  padding: 1rem 1.25rem 1.5rem;
+}
+
+.mascot-slot {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  min-height: 90px;
+}
+
+.mascot-slot img {
+  max-height: 110px;
+  max-width: 220px;
+  object-fit: contain;
+}
+
+/* Avoids the broken-image icon until web/mascot.png exists (see app.js). */
+.mascot-slot img[hidden] {
+  display: none;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0.75rem;
+  text-align: center;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+}
+
+.lang-toggle {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+/* Player tabs */
+.player-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--gridline);
+  overflow-x: auto;
+  margin-bottom: 0.5rem;
+}
+
+.player-tab {
+  appearance: none;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.player-tab:hover {
+  color: var(--text-primary);
+}
+
+.player-tab.is-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Persistent panels above the player tabs — server-wide, so they aren't tied to whichever
+   player is currently selected. Capped height with their own scrollbar to stay out of the way. */
+.activity-panel,
+.leaderboard-panel,
+.compare-panel {
+  margin-bottom: 0.75rem;
+  background: var(--neutral-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.7rem;
+}
+
+.activity-panel-header,
+.leaderboard-panel-header,
+.compare-panel-header {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.4rem;
+}
+
+.activity-feed,
+.leaderboard-list,
+.compare-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.leaderboard-tabs {
+  margin-bottom: 0.5rem;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.7rem;
+}
+
+.leaderboard-row-top {
+  border-color: var(--shiny-color);
+  box-shadow: 0 0 8px rgba(232, 185, 35, 0.35);
+}
+
+.leaderboard-rank {
+  font-family: var(--font-digital);
+  color: var(--text-muted);
+  width: 1.6rem;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
+.leaderboard-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-value {
+  flex: 0 0 auto;
+  font-family: var(--font-digital);
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
+.compare-selectors {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.compare-selectors select {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.compare-vs {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.compare-results {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.compare-column-header {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.35rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compare-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.compare-row-dex {
+  font-family: var(--font-digital);
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.compare-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+
+.activity-row-shiny {
+  border-color: var(--shiny-color);
+  background: rgba(232, 185, 35, 0.1);
+  box-shadow: 0 0 8px rgba(232, 185, 35, 0.35);
+}
+
+.activity-sprite {
+  width: 2.2rem;
+  height: 2.2rem;
+  object-fit: contain;
+  background: var(--neutral-bg);
+  border-radius: var(--radius);
+  flex: 0 0 auto;
+}
+
+.activity-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-player {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activity-verb {
+  color: var(--text-secondary);
+}
+
+.activity-species {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.activity-shiny {
+  color: var(--shiny-color);
+}
+
+.activity-time {
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+  font-family: var(--font-digital);
+  color: var(--text-muted);
+}
+
+.empty-hint {
+  padding: 1rem 0;
+  font-size: 0.7rem;
+  line-height: 1.8;
+  color: var(--text-muted);
+}
+
+main#dashboard {
+  padding-top: 0.5rem;
+}
+
+/* KPI row */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.stat-tile {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.stat-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  font-family: var(--font-digital);
+}
+
+.stat-tile-meter {
+  justify-content: space-between;
+}
+
+.meter-track {
+  height: 6px;
+  border-radius: var(--radius);
+  background: var(--accent-track);
+  overflow: hidden;
+  margin-top: 0.35rem;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.2s ease;
+}
+
+/* Current team — hidden entirely when the player is offline or has an empty party (see
+   renderTeam in app.js), rather than showing an empty/placeholder state. */
+.team-row {
+  margin-bottom: 1.25rem;
+}
+
+.team-row-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+}
+
+.team-row-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 0.6rem;
+}
+
+.team-card {
+  position: relative;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.team-card:hover,
+.team-card:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.team-card-sprite {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: var(--neutral-bg);
+  border-radius: var(--radius);
+}
+
+.team-card-shiny {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 0.3rem;
+}
+
+.team-card-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.team-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+}
+
+.team-card-level {
+  font-family: var(--font-digital);
+  color: var(--text-muted);
+}
+
+.team-card-hp-track {
+  width: 100%;
+  height: 5px;
+  border-radius: var(--radius);
+  background: var(--neutral-bg);
+  overflow: hidden;
+}
+
+.team-card-hp-fill {
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.team-card-hp-label {
+  font-family: var(--font-digital);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* Filters */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+/* Without this, `.filter-row { display: flex }` overrides the browser's native `hidden`. */
+.filter-row[hidden] {
+  display: none;
+}
+
+#search-input,
+#generation-filter {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+}
+
+#search-input {
+  flex: 1 1 220px;
+}
+
+#generation-filter {
+  flex: 0 0 auto;
+}
+
+.segmented {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.segmented-option {
+  appearance: none;
+  border: none;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: inherit;
+  padding: 0.5rem 0.85rem;
+  cursor: pointer;
+}
+
+.segmented-option + .segmented-option {
+  border-left: 1px solid var(--border);
+}
+
+.segmented-option.is-active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.species-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 0.85rem;
+}
+
+.species-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.sprite-wrap {
+  position: relative;
+}
+
+.species-sprite {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: var(--neutral-bg);
+  border-radius: var(--radius);
+}
+
+.shiny-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: #22d3ee;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
+.sprite-nav {
+  position: absolute;
+  bottom: 4px;
+  appearance: none;
+  border: none;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  font-size: 0.55rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sprite-nav:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.sprite-nav-prev {
+  left: 4px;
+}
+
+.sprite-nav-next {
+  right: 4px;
+}
+
+/* Never-seen species: stripped-down card, no sprite or info (no spoiler) */
+.species-card-unknown {
+  opacity: 0.55;
+}
+
+/* See isFullyComplete() in app.js for the criteria. */
+.species-card-complete {
+  border-color: var(--shiny-color, #e8b923);
+  box-shadow: 0 0 0 1px var(--shiny-color, #e8b923), 0 0 8px rgba(232, 185, 35, 0.45);
+}
+
+.species-sprite-placeholder {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background: var(--neutral-bg);
+  border-radius: var(--radius);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* Name + status badge on the same row — the dex number moved onto the sprite (.dex-number
+   below) to make room. */
+.species-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* Overlaid on the sprite/placeholder's top-left corner instead of taking a header row. */
+.dex-number {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 0.62rem;
+  font-family: var(--font-digital);
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius);
+}
+
+.species-name {
+  font-weight: 600;
+  font-size: 1.05rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.species-card-header .species-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.species-name-clickable {
+  cursor: pointer;
+}
+
+.species-name-clickable:hover,
+.species-name-clickable:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  outline: none;
+}
+
+.badge {
+  font-size: 0.72rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.badge-caught {
+  background: var(--accent-track);
+  color: var(--accent);
+}
+
+.status-group {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+
+.caught-date {
+  font-size: 0.62rem;
+  font-family: var(--font-digital);
+  color: var(--text-muted);
+}
+
+.badge-seen {
+  background: var(--neutral-bg);
+  color: var(--text-secondary);
+}
+
+/* Row of colored badges (types, gender/shiny, abilities, egg groups, biomes) */
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.badge-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.badge-pill.has-tooltip,
+.badge.has-tooltip {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+/* .detail-heading, .field-label, .info-*, .spawn-*, .biomes-more, .form-row are all modal-only
+   now (the inline card "Détails ▾" expand that used to share them was removed) — sized larger
+   than the compact-card era they were originally tuned for. */
+/* Same treatment for both — field-label (buildInfoSection/misc headings) and detail-heading
+   (forms) used to look inconsistent (one uppercase, one not) and both read too subtle against
+   the larger body content beneath them. */
+.detail-heading,
+.field-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 1.1rem 0 0.4rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-heading:first-child,
+.field-label:first-child {
+  margin-top: 0;
+}
+
+/* Height/weight grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.info-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.info-value {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.nature-stat-up {
+  color: var(--status-good);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.nature-stat-down {
+  color: var(--status-bad);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.team-modal-held-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Spawn */
+.spawn-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--gridline);
+}
+
+.spawn-entry:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.spawn-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.biome-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* Label sits inline as the row's first item, not a separate heading line — keeps each category
+   to roughly one line instead of two, which matters once there are a dozen+ categories. */
+.biome-group-row {
+  align-items: center;
+}
+
+.biome-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+}
+
+.spawn-level {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.biomes-more {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--neutral-bg);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.15rem 0.55rem;
+  align-self: center;
+  cursor: pointer;
+}
+
+.biomes-more:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  padding: 0.2rem 0;
+}
+
+.form-row .form-name {
+  flex: 0 0 auto;
+  color: var(--text-primary);
+}
+
+/* Badges are also used on the compact grid cards (types, gender/shiny) — only scale them up
+   inside the modal, where there's room. */
+.species-modal-content .badge-row {
+  gap: 0.45rem;
+}
+
+.species-modal-content .badge-pill,
+.species-modal-content .badge {
+  font-size: 0.82rem;
+  padding: 0.25rem 0.65rem;
+}
+
+.item-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--neutral-bg);
+  padding: 0.2rem 0.65rem 0.2rem 0.3rem;
+  border-radius: 999px;
+}
+
+.item-chip-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.item-chip-icon[hidden] {
+  display: none;
+}
+
+.dual-column-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.dual-column {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.moves-subheading {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  margin: 0.7rem 0 0.3rem;
+}
+
+.moves-subheading:first-child {
+  margin-top: 0;
+}
+
+.moves-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.3rem 0.75rem;
+}
+
+.moves-grid + .biomes-more {
+  margin-top: 0.35rem;
+}
+
+.move-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid var(--gridline);
+  cursor: help;
+  border-radius: var(--radius);
+}
+
+.move-row:hover,
+.move-row:focus-visible {
+  background: var(--neutral-bg);
+  outline: none;
+}
+
+/* Single shared tooltip (see showMoveTooltip in app.js), repositioned per-hover rather than one
+   instance per move row. Kept visibility:hidden (not display:none) while idle so it still has
+   real layout dimensions to measure before being placed and revealed. */
+.move-tooltip {
+  position: fixed;
+  z-index: 200;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+  width: 260px;
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 0.6rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.move-tooltip.is-visible {
+  visibility: visible;
+  opacity: 1;
+}
+
+.move-tooltip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.move-tooltip-name {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.move-tooltip-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.3rem;
+}
+
+.move-tooltip-stat-lines {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.move-tooltip-desc {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.75rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--gridline);
+  line-height: 1.35;
+}
+
+.move-level {
+  flex: 0 0 auto;
+  font-family: var(--font-digital);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.move-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Species detail modal -------------------------------------------------------------------- */
+
+.species-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.species-modal[hidden] {
+  display: none;
+}
+
+.species-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.species-modal-content {
+  position: relative;
+  width: min(94vw, 900px);
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.species-modal-close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  appearance: none;
+  border: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  background: var(--neutral-bg);
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.species-modal-close:hover,
+.species-modal-close:focus-visible {
+  background: var(--accent);
+  color: #ffffff;
+  outline: none;
+}
+
+.species-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.species-modal-sprite {
+  width: 130px;
+  height: 130px;
+  object-fit: contain;
+  background: var(--neutral-bg);
+  border-radius: var(--radius);
+  flex: 0 0 auto;
+}
+
+.species-modal-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.species-modal-title .dex-number {
+  position: static;
+  align-self: flex-start;
+  background: var(--neutral-bg);
+  color: var(--text-muted);
+}
+
+.species-modal-name {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.species-modal-description {
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0 0 0.75rem;
+}
+
+/* Base stats — a single accent hue for all 6 bars (one series, not distinct categories), the
+   exact fill/track pair the completion meter already uses. */
+.stat-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.stat-bar-row {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr 2.8rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stat-bar-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.stat-bar-track {
+  height: 8px;
+  border-radius: var(--radius);
+  background: var(--accent-track);
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.stat-bar-row-total {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--gridline);
+  font-weight: 700;
+}
+
+.stat-bar-row-total .stat-bar-label,
+.stat-bar-row-total .stat-bar-value {
+  color: var(--text-primary);
+}
+
+.stat-bar-value {
+  font-family: var(--font-digital);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+/* Evolution chain */
+.evolution-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.evolution-chain-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Alternative evolutions (e.g. Poliwhirl -> Poliwrath OR -> Politoed) get their own row instead
+   of chaining after the previous branch — a small indent + corner connector reads as "this is an
+   alternative," not a continuation. margin-left is set inline via JS (_alignEvolutionBranches in
+   app.js) to match the real rendered position of the first-evolution node above it, since a fixed
+   indent can't line up with a trunk row whose width varies by species. */
+.evolution-chain-branch {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+
+.evolution-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  width: 5.5rem;
+  text-align: center;
+}
+
+.evolution-node-sprite {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  background: var(--neutral-bg);
+  border-radius: var(--radius);
+}
+
+.evolution-node-current .evolution-node-sprite {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.evolution-node-name {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.evolution-node-current .evolution-node-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.evolution-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.evolution-arrow-glyph {
+  font-size: 1rem;
+}
+
+.evolution-arrow-branch .evolution-arrow-glyph {
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.evolution-arrow-label {
+  font-size: 0.68rem;
+  white-space: nowrap;
+}

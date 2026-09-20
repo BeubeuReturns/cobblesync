@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CobbleSync</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="device">
+    <header class="device-header">
+      <button type="button" class="device-nav-arrow" id="tabs-prev" aria-label="Joueur précédent">◀</button>
+      <h1>CobbleSync</h1>
+      <div class="device-header-right">
+        <button type="button" class="device-filter-toggle" id="filter-toggle" aria-label="Afficher/masquer les filtres" aria-expanded="true">
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>
+          <span data-i18n="filtersLabel">Filtres</span>
+        </button>
+        <button type="button" class="device-nav-arrow" id="tabs-next" aria-label="Joueur suivant">▶</button>
+      </div>
+    </header>
+
+    <div class="device-screen">
+      <div class="segmented lang-toggle" role="group" aria-label="Langue / Language">
+        <button type="button" class="segmented-option" data-lang="fr">FR</button>
+        <button type="button" class="segmented-option" data-lang="en">EN</button>
+      </div>
+
+      <!-- Mascot slot: drop your image at web/mascot.png (transparent background, ~200x120px)
+           to show it here. Hidden automatically if missing. -->
+      <div class="mascot-slot" aria-hidden="true">
+        <img id="mascot-img" src="mascot.png" alt="" />
+      </div>
+
+      <p class="subtitle" data-i18n="subtitle">Progression du pokédex par joueur</p>
+
+      <div class="activity-panel">
+        <div class="activity-panel-header" data-i18n="activityTab">Activité</div>
+        <div class="activity-feed" id="activity-feed"></div>
+        <p class="empty-hint" id="activity-empty" data-i18n="activityEmpty" hidden>Aucune capture pour l'instant.</p>
+      </div>
+
+      <div class="leaderboard-panel">
+        <div class="leaderboard-panel-header" data-i18n="leaderboardTitle">Classement</div>
+        <div class="segmented leaderboard-tabs" role="group" aria-label="Catégorie de classement">
+          <button type="button" class="segmented-option is-active" data-leaderboard-category="completion" data-i18n="leaderboardCompletion">Complétion</button>
+          <button type="button" class="segmented-option" data-leaderboard-category="shinyCount" data-i18n="leaderboardShinyCount">Shinys</button>
+          <button type="button" class="segmented-option" data-leaderboard-category="weekly" data-i18n="leaderboardWeekly">Cette semaine</button>
+        </div>
+        <div class="leaderboard-list" id="leaderboard-list"></div>
+        <p class="empty-hint" id="leaderboard-empty" data-i18n="leaderboardEmpty" hidden>Aucune donnée pour cette catégorie.</p>
+      </div>
+
+      <div class="compare-panel" id="compare-panel" hidden>
+        <div class="compare-panel-header" data-i18n="compareTitle">Comparaison</div>
+        <div class="compare-selectors">
+          <select id="compare-a" aria-label="Joueur A"></select>
+          <span class="compare-vs">vs</span>
+          <select id="compare-b" aria-label="Joueur B"></select>
+        </div>
+        <div class="compare-results">
+          <div class="compare-column">
+            <div class="compare-column-header" id="compare-a-header"></div>
+            <div class="compare-list" id="compare-a-list"></div>
+          </div>
+          <div class="compare-column">
+            <div class="compare-column-header" id="compare-b-header"></div>
+            <div class="compare-list" id="compare-b-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="player-tabs" id="player-tabs" aria-label="Joueurs">
+        <p class="empty-hint" id="tabs-empty" data-i18n="tabsEmpty" hidden>Aucun joueur connu pour l'instant — connecte-toi une fois au serveur.</p>
+      </nav>
+
+      <main id="dashboard" hidden>
+        <section class="kpi-row" id="kpi-row" aria-label="Résumé">
+          <div class="stat-tile">
+            <span class="stat-label" data-i18n="kpiCaught">Capturés</span>
+            <span class="stat-value" id="kpi-caught">—</span>
+          </div>
+          <div class="stat-tile">
+            <span class="stat-label" data-i18n="kpiSeen">Vus (non capturés)</span>
+            <span class="stat-value" id="kpi-seen">—</span>
+          </div>
+          <div class="stat-tile stat-tile-meter">
+            <span class="stat-label" data-i18n="kpiProgress">Progression</span>
+            <span class="stat-value" id="kpi-percent">—</span>
+            <div class="meter-track">
+              <div class="meter-fill" id="kpi-meter-fill"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="team-row" id="team-row" hidden>
+          <div class="team-row-label" data-i18n="teamLabel">Équipe actuelle</div>
+          <div class="team-row-cards" id="team-row-cards"></div>
+        </section>
+
+        <section class="filter-row" id="filter-panel">
+          <input type="search" id="search-input" data-i18n-placeholder="searchPlaceholder" placeholder="Rechercher une espèce…" aria-label="Rechercher une espèce" />
+          <select id="generation-filter" aria-label="Filtrer par génération">
+            <option value="all" data-i18n="allGenerations">Toutes générations</option>
+          </select>
+          <div class="segmented" role="group" aria-label="Filtrer par statut">
+            <button type="button" class="segmented-option" data-filter="caught" data-i18n="filterCaught">Capturés</button>
+            <button type="button" class="segmented-option" data-filter="seen" data-i18n="filterSeen">Vus seulement</button>
+            <button type="button" class="segmented-option is-active" data-filter="all" data-i18n="filterAll">Tout le pokédex</button>
+          </div>
+        </section>
+
+        <section class="species-grid" id="species-grid"></section>
+        <p class="empty-hint" id="grid-empty" data-i18n="gridEmpty" hidden>Aucune espèce ne correspond à ce filtre.</p>
+      </main>
+    </div>
+  </div>
+
+  <div class="species-modal" id="species-modal" hidden>
+    <div class="species-modal-backdrop" id="species-modal-backdrop"></div>
+    <div class="species-modal-content" role="dialog" aria-modal="true">
+      <button type="button" class="species-modal-close" id="species-modal-close" aria-label="Fermer">✕</button>
+      <div id="species-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
