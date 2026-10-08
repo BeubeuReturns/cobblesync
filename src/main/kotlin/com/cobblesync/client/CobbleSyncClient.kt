@@ -3,7 +3,11 @@ package com.cobblesync.client
 import com.cobblesync.CobbleSync
 import com.cobblesync.CobbleSync.LOGGER
 import com.cobblesync.data.PlayerProgress
+import com.cobblesync.data.RegionalForms
 import com.cobblesync.data.WorldDataCache
+import com.cobblemon.mod.common.api.pokemon.PokemonSpecies
+import com.cobblemon.mod.common.pokemon.FormData
+import com.mojang.brigadier.arguments.StringArgumentType
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -15,20 +19,43 @@ import net.minecraft.network.chat.Component
 import net.minecraft.resources.ResourceLocation
 import java.util.ArrayDeque
 
-private data class ExportJob(val speciesId: ResourceLocation, val aspects: Set<String>)
+/** One render: the species, the aspects to render with, and the PNG name the dashboard expects. */
+private data class ExportJob(val speciesId: ResourceLocation, val aspects: Set<String>, val fileName: String)
 
 /**
- * Experimental client-side entrypoint — registers /cobblesync commands for capturing real
+ * Normal + shiny renders for the species and, unless [onlyForm] narrows it down, each of its
+ * regional forms. Names come from RegionalForms.modelFileStem, the same rule the dashboard uses
+ * to look them up ("37.png", "37-shiny.png", "37-alolan.png", "37-alolan-shiny.png").
+ */
+private fun jobsFor(speciesId: ResourceLocation, onlyForm: FormData? = null, includeRegional: Boolean = true): List<ExportJob> {
+    val species = PokemonSpecies.getByIdentifier(speciesId) ?: return listOf(ExportJob(speciesId, emptySet(), "$speciesId.png"))
+    val forms = when {
+        onlyForm != null -> listOf(onlyForm)
+        includeRegional -> listOf(species.standardForm) + RegionalForms.regionalForms(species)
+        else -> listOf(species.standardForm)
+    }
+    return forms.flatMap { form ->
+        val stem = RegionalForms.modelFileStem(species.nationalPokedexNumber, form)
+        val formAspects = if (form == species.standardForm) emptySet() else form.aspects.toSet()
+        listOf(
+            ExportJob(speciesId, formAspects, "$stem.png"),
+            ExportJob(speciesId, formAspects + "shiny", "$stem-shiny.png")
+        )
+    }
+}
+
+/**
+ * Experimental client-side entrypoint. Registers /cobblesync commands for capturing real
  * Cobblemon model renders as static PNGs (see ModelExportScreen), to use as sprites in the web
  * dashboard instead of/alongside the external PokeAPI ones. Not wired into the normal dashboard
  * data flow beyond writing into web/models/ (served automatically by StaticFileHandler).
  */
 object CobbleSyncClient : ClientModInitializer {
     // Every export (single or batch) goes through this one queue, processed strictly one job per
-    // client tick — opening the next screen has to be deferred to END_CLIENT_TICK rather than done
+    // client tick. Opening the next screen has to be deferred to END_CLIENT_TICK rather than done
     // synchronously in a command handler or inside the previous job's onDone callback, since
     // whatever screen is "currently active" (chat, or our own previous export screen) closes
-    // itself via setScreen(null) in the SAME call stack right after — which would immediately
+    // itself via setScreen(null) in the same call stack right after, which would immediately
     // stomp a screen we just opened synchronously. A real tick boundary runs strictly after that.
     private val queue = ArrayDeque<ExportJob>()
 
@@ -54,7 +81,9 @@ object CobbleSyncClient : ClientModInitializer {
         LOGGER.info("CobbleSyncClient.onInitializeClient() running, registering /cobblesync commands")
         ClientCommandRegistrationCallback.EVENT.register { dispatcher, _ ->
             dispatcher.register(
-                ClientCommandManager.literal("cobblesync")
+                // Not "cobblesync": that's the server's dashboard-link command, and once connected the
+                // server's command tree shadows a client root of the same name (subcommands rejected).
+                ClientCommandManager.literal("cobblesyncexport")
                     .then(
                         ClientCommandManager.literal("previewmodel")
                             .then(
@@ -70,23 +99,55 @@ object CobbleSyncClient : ClientModInitializer {
                         ClientCommandManager.literal("exportmodel")
                             .then(
                                 ClientCommandManager.argument("species", ResourceLocationArgument.id())
+                                    // No form: the species plus all its regional forms, normal and shiny.
                                     .executes { context ->
-                                        // Client commands use FabricClientCommandSource, not CommandSourceStack —
+                                        // Client commands use FabricClientCommandSource, not CommandSourceStack.
                                         // ResourceLocationArgument.getId() only accepts the latter, so read the
                                         // parsed value directly instead.
                                         val speciesId = context.getArgument("species", ResourceLocation::class.java)
-                                        startBatch(listOf(ExportJob(speciesId, emptySet())), context.source)
+                                        startBatch(jobsFor(speciesId), context.source)
                                         1
                                     }
+                                    // e.g. "/cobblesyncexport exportmodel cobblemon:vulpix alola": that form only.
+                                    .then(
+                                        ClientCommandManager.argument("form", StringArgumentType.word())
+                                            .executes { context ->
+                                                val speciesId = context.getArgument("species", ResourceLocation::class.java)
+                                                val formName = StringArgumentType.getString(context, "form")
+                                                val species = PokemonSpecies.getByIdentifier(speciesId)
+                                                val form = species?.let { RegionalForms.formByName(it, formName) }
+                                                if (form == null) {
+                                                    val known = species?.forms?.joinToString(", ") { it.name } ?: "-"
+                                                    context.source.sendError(Component.literal("[CobbleSync] Unknown form '$formName' for $speciesId (forms: $known)"))
+                                                } else {
+                                                    startBatch(jobsFor(speciesId, onlyForm = form), context.source)
+                                                }
+                                                1
+                                            }
+                                    )
                             )
                     )
                     .then(
                         ClientCommandManager.literal("exportallmodels")
+                            // Every known species with its regional forms; "noregional" skips them.
                             .executes { context ->
-                                val world = WorldDataCache.get()
-                                val speciesIds = PlayerProgress.relevantSpeciesIds(world)
-                                val jobs = speciesIds.flatMap { id ->
-                                    listOf(ExportJob(id, emptySet()), ExportJob(id, setOf("shiny")))
+                                startBatch(allJobs(includeRegional = true), context.source)
+                                1
+                            }
+                            .then(
+                                ClientCommandManager.literal("noregional").executes { context ->
+                                    startBatch(allJobs(includeRegional = false), context.source)
+                                    1
+                                }
+                            )
+                    )
+                    .then(
+                        ClientCommandManager.literal("exportregionalmodels")
+                            // Only the regional forms, to complete an existing export.
+                            .executes { context ->
+                                val jobs = PlayerProgress.relevantSpeciesIds(WorldDataCache.get()).flatMap { id ->
+                                    val species = PokemonSpecies.getByIdentifier(id) ?: return@flatMap emptyList()
+                                    RegionalForms.regionalForms(species).flatMap { jobsFor(id, onlyForm = it) }
                                 }
                                 startBatch(jobs, context.source)
                                 1
@@ -109,7 +170,7 @@ object CobbleSyncClient : ClientModInitializer {
             try {
                 LOGGER.info("export: opening ModelExportScreen for {} aspects={}", job.speciesId, job.aspects)
                 Minecraft.getInstance().setScreen(
-                    ModelExportScreen(job.speciesId, job.aspects, outputDir) { success, message ->
+                    ModelExportScreen(job.speciesId, job.aspects, outputDir, job.fileName) { success, message ->
                         LOGGER.info("export finished: success={} message={}", success, message)
                         onJobDone(success, message)
                     }
@@ -121,6 +182,9 @@ object CobbleSyncClient : ClientModInitializer {
         }
     }
 
+    private fun allJobs(includeRegional: Boolean): List<ExportJob> =
+        PlayerProgress.relevantSpeciesIds(WorldDataCache.get()).flatMap { jobsFor(it, includeRegional = includeRegional) }
+
     private fun startBatch(jobs: List<ExportJob>, source: FabricClientCommandSource) {
         queue.clear()
         queue.addAll(jobs)
@@ -131,7 +195,7 @@ object CobbleSyncClient : ClientModInitializer {
         source.sendFeedback(
             Component.literal(
                 "[CobbleSync] Starting export of ${jobs.size} image(s)" +
-                    if (jobs.size > 10) " — this can take a few minutes, ~1 image per game tick." else "..."
+                    if (jobs.size > 10) ", this can take a few minutes, ~1 image per game tick." else "..."
             )
         )
     }

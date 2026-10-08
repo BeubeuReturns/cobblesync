@@ -4,7 +4,7 @@ import net.minecraft.resources.ResourceLocation
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Cache of resolved item icon PNG bytes served by /api/item/{id} — reading + parsing a model
+ * Cache of resolved item icon PNG bytes served by /api/item/{id}. Reading + parsing a model
  * JSON just to find a texture path isn't expensive, but it's pure classpath I/O with no reason
  * to repeat it per request. Misses (icon not found) are cached too via Optional.empty(), same
  * "never changes while the server runs" lifecycle as SpeciesInfoCache.

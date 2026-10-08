@@ -20,11 +20,14 @@ object PlayerRegistry {
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     private val listType = TypeToken.getParameterized(List::class.java, KnownPlayer::class.java).type
     private val players = ConcurrentHashMap<UUID, String>()
-    private var storagePath: Path? = null
-    private val saver = DebouncedSaver { save() }
+    @Volatile private var storagePath: Path? = null
+    @Volatile private var saver: DebouncedSaver? = null
 
+    /** Called per world: in singleplayer the same JVM can open several saves in a row. */
     fun load(path: Path) {
+        players.clear()
         storagePath = path
+        saver = DebouncedSaver { save() }
         if (!Files.exists(path)) return
         runCatching {
             Files.newBufferedReader(path).use { reader ->
@@ -36,7 +39,7 @@ object PlayerRegistry {
 
     fun recordJoin(uuid: UUID, name: String) {
         val previous = players.put(uuid, name)
-        if (previous != name) saver.requestSave()
+        if (previous != name) saver?.requestSave()
     }
 
     fun all(): List<KnownPlayer> = players.entries
@@ -45,7 +48,13 @@ object PlayerRegistry {
 
     fun nameOf(uuid: UUID): String? = players[uuid]
 
-    fun shutdown() = saver.shutdown()
+    /** Flushes pending writes, then forgets this world's data. */
+    fun shutdown() {
+        saver?.shutdown()
+        saver = null
+        storagePath = null
+        players.clear()
+    }
 
     private fun save() {
         val path = storagePath ?: return

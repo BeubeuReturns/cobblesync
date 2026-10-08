@@ -1,6 +1,7 @@
 package com.cobblesync.data
 
 import com.cobblemon.mod.common.Cobblemon
+import com.cobblemon.mod.common.api.pokedex.PokedexEntryProgress
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies
 import net.minecraft.resources.ResourceLocation
 import java.util.UUID
@@ -29,7 +30,7 @@ object PlayerProgress {
 
     /**
      * world/relevantSpeciesIds are accepted as params (not recomputed per call) so a caller
-     * iterating many players — the leaderboard — only builds the filtered list once.
+     * iterating many players, the leaderboard, only builds the filtered list once.
      */
     fun summarize(
         uuid: UUID,
@@ -42,9 +43,10 @@ object PlayerProgress {
 
         for (speciesId in relevantSpeciesIds) {
             val record = pokedex.speciesRecords[speciesId]
-            when (record?.getKnowledge()?.ordinal) {
-                2 -> caughtCount++
-                1 -> seenCount++
+            when (record?.getKnowledge()) {
+                PokedexEntryProgress.OWNED -> caughtCount++
+                PokedexEntryProgress.SEEN -> seenCount++
+                else -> {}
             }
         }
 

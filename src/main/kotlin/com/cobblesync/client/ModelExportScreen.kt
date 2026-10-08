@@ -20,34 +20,35 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Experimental. Renders a single species via Cobblemon's own profile-render call (the same one
- * the pokedex/party screens use), directly on the MAIN render target using the screen's own
- * ambient GuiGraphics matrices/lighting (proven working via ModelPreviewScreen — no custom
- * off-screen TextureTarget, no manual projection/modelview setup).
+ * Experimental. Renders a single species via Cobblemon's own profile-render call (same one the
+ * pokedex/party screens use), directly on the main render target using the screen's own ambient
+ * GuiGraphics matrices/lighting (proven working via ModelPreviewScreen, no custom off-screen
+ * TextureTarget, no manual projection/modelview setup).
  *
  * A dedicated off-screen TextureTarget was tried first and abandoned: drawProfilePokemon calls
- * RenderSystem.applyModelViewMatrix() unconditionally as its own first line, which in this MC
- * version has the side effect of rebinding the main render target — meaning a separate target
- * can never stay bound across that call, no matter how many times it's rebound beforehand
- * (confirmed via direct GL_FRAMEBUFFER_BINDING logging).
+ * RenderSystem.applyModelViewMatrix() unconditionally as its first line, which in this MC version
+ * rebinds the main render target as a side effect, so a separate target can never stay bound
+ * across that call no matter how many times it's rebound beforehand (confirmed via direct
+ * GL_FRAMEBUFFER_BINDING logging).
  *
- * Instead: draw directly onto the main target (where it demonstrably works), then read back just
- * the small region we drew into via a raw glReadPixels call — NOT the higher-level
- * Screenshot.takeScreenshot(RenderTarget) helper, which hung with no exception in an earlier,
- * separate investigation (see CLAUDE.md) when pointed at the main target; a smaller, lower-level
- * manual read is a meaningfully different code path and may avoid whatever caused that.
+ * Instead: draw directly onto the main target, then read back just the drawn region via a raw
+ * glReadPixels call, not the higher-level Screenshot.takeScreenshot(RenderTarget) helper, which
+ * hung with no exception in an earlier investigation (see CLAUDE.md) when pointed at the main
+ * target. A smaller, lower-level manual read is a meaningfully different path that may avoid
+ * whatever caused that.
  *
- * Background isolation is a simple chroma-key: paint a solid, deliberately unusual color behind
- * the model before drawing it, then treat near-matching pixels as transparent when building the
- * final image. Simple and imperfect (a Pokémon that happens to share the key color would get
- * holes punched in it, and anti-aliased edges leave a faint fringe of the key color) but good
- * enough for a first pass — a real solution would need rendering twice against two different
- * backgrounds and diffing, which is more than this prototype needs yet.
+ * Background isolation is a simple chroma-key: paint a solid, unusual color behind the model
+ * before drawing it, then treat near-matching pixels as transparent. Simple and imperfect (a
+ * Pokémon sharing the key color gets holes punched in it, anti-aliased edges leave a faint fringe)
+ * but good enough for a first pass; a real solution would render twice against two backgrounds
+ * and diff, more than this prototype needs yet.
  */
 class ModelExportScreen(
     private val speciesId: ResourceLocation,
+    // Rendered as-is: a regional form's aspects ("alolan") select that form, "shiny" the colors.
     private val aspects: Set<String>,
     private val outputDir: Path,
+    private val fileName: String,
     private val onDone: (success: Boolean, message: String) -> Unit
 ) : Screen(Component.literal("CobbleSync model export")) {
     private var done = false
@@ -86,9 +87,8 @@ class ModelExportScreen(
         graphics.pose().popPose()
 
         // ModelPreviewScreen showed a correct model from its very first rendered frame, so no
-        // warm-up delay is needed here either — capture immediately after this same draw call.
+        // warm-up delay is needed here either: capture immediately after this same draw call.
         done = true
-        val fileName = "${species.nationalPokedexNumber}${if (aspects.contains("shiny")) "-shiny" else ""}.png"
         try {
             captureRegion(guiLeft, guiTop, captureSize, fileName)
         } catch (t: Throwable) {
@@ -115,7 +115,7 @@ class ModelExportScreen(
         val readWidth = (physRight - physLeft).coerceAtLeast(1)
         val readHeight = (physBottom - physTop).coerceAtLeast(1)
         // glReadPixels' Y origin is the bottom of the framebuffer, but our GUI-space Y grows
-        // downward from the top — flip here so glY=0 corresponds to the bottom of our capture box.
+        // downward from the top. Flip here so glY=0 corresponds to the bottom of our capture box.
         val glY = (physicalHeight - physBottom).coerceIn(0, physicalHeight)
 
         LOGGER.info(
@@ -214,7 +214,7 @@ class ModelExportScreen(
     }
 
     companion object {
-        // Deliberately unusual, high-saturation color unlikely to appear on a real Pokémon model —
+        // Deliberately unusual, high-saturation color unlikely to appear on a real Pokémon model:
         // pure "chroma key" green.
         private const val CHROMA_KEY_R = 0
         private const val CHROMA_KEY_G = 255

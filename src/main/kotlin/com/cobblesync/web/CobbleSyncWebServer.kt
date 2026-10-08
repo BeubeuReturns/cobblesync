@@ -25,6 +25,7 @@ class CobbleSyncWebServer(
         http.createContext("/api/item/", ItemIconHandler())
         http.createContext("/api/capture-log", CaptureLogHandler())
         http.createContext("/api/leaderboard", LeaderboardHandler())
+        http.createContext("/api/events", DashboardEvents)
         http.createContext("/", StaticFileHandler(webRoot))
         http.start()
         httpServer = http
@@ -33,6 +34,7 @@ class CobbleSyncWebServer(
     }
 
     fun stop() {
+        DashboardEvents.closeAll()
         httpServer?.stop(1)
         httpServer = null
         CobbleSync.LOGGER.info("CobbleSync web server stopped.")

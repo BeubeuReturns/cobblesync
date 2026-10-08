@@ -9,11 +9,12 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 /**
  * Posts capture notifications to a Discord webhook (JDK HttpClient, no extra dependency).
- * Fire-and-forget on its own single-thread executor — never blocks or throws back into the
+ * Fire-and-forget on its own single-thread executor: never blocks or throws back into the
  * Cobblemon event-dispatch thread, and keeps working independently of the dashboard's web
  * server (which can be disabled in webserver.conf while notifications stay on).
  */
@@ -21,7 +22,9 @@ object DiscordNotifier {
     @Volatile
     private var config: DiscordConfig = DiscordConfig(false, "", "en", true, false)
 
-    private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "cobblesync-discord").apply { isDaemon = true } }
+    // Recreated on demand: shutdown() runs on every world stop, and in singleplayer the next
+    // world reuses this same object.
+    private var executor: ExecutorService? = null
     private val httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
 
     fun configure(config: DiscordConfig) {
@@ -52,9 +55,17 @@ object DiscordNotifier {
         post(c.webhookUrl, message)
     }
 
+    @Synchronized
     fun shutdown() {
-        executor.shutdown()
+        executor?.shutdown()
+        executor = null
     }
+
+    @Synchronized
+    private fun executor(): ExecutorService =
+        executor?.takeUnless { it.isShutdown }
+            ?: Executors.newSingleThreadExecutor { r -> Thread(r, "cobblesync-discord").apply { isDaemon = true } }
+                .also { executor = it }
 
     private fun displayName(speciesId: String, language: String): String {
         val path = speciesId.substringAfter(':')
@@ -62,7 +73,7 @@ object DiscordNotifier {
     }
 
     private fun post(webhookUrl: String, content: String) {
-        executor.submit {
+        executor().submit {
             try {
                 val payload = JsonObject().apply { addProperty("content", content) }.toString()
                 val request = HttpRequest.newBuilder()

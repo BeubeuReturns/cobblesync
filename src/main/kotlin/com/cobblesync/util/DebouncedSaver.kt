@@ -8,19 +8,16 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Coalesces frequent "please persist this" requests (e.g. one per catch) into a single delayed
- * background write, instead of a synchronous full-file rewrite on every single event. Cobblemon
- * fires capture/scan events synchronously (likely on the main server tick thread) — writing
- * straight to disk from there blocks the tick, and doing it on every catch individually rewrites
- * the *entire* file every time even though only one entry actually changed.
+ * Coalesces frequent "please persist this" requests (one per catch) into a single delayed
+ * background write, instead of a synchronous full-file rewrite on every event. Cobblemon fires
+ * capture/scan events synchronously, likely on the main tick thread, so writing straight to disk
+ * there blocks the tick and rewrites the entire file for one changed entry.
  *
- * [requestSave] is cheap and safe to call from any thread, including the tick thread: it marks
- * the data dirty and, if nothing is already scheduled, schedules exactly one write [delayMillis]
- * out. Further calls that land inside that window just keep the dirty flag set rather than
- * pushing the write back out — a burst of catches collapses into one disk write with a bounded
- * worst-case latency, instead of either firing per-event or never firing at all under steady load.
- * [flushNow] runs the write immediately and synchronously — used on shutdown so a pending
- * debounced save is never lost.
+ * [requestSave] is cheap and safe from any thread: it marks the data dirty and schedules exactly
+ * one write [delayMillis] out if nothing's already scheduled. Calls inside that window just keep
+ * the dirty flag set instead of pushing the write back out, so a burst of catches collapses into
+ * one disk write with bounded latency. [flushNow] writes immediately and synchronously, used on
+ * shutdown so a pending debounced save is never lost.
  */
 class DebouncedSaver(
     private val delayMillis: Long = 2000,

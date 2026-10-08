@@ -14,6 +14,8 @@
   const kpiMeterFill = document.getElementById("kpi-meter-fill");
   const teamRowEl = document.getElementById("team-row");
   const teamRowCardsEl = document.getElementById("team-row-cards");
+  const badgesRowEl = document.getElementById("badges-row");
+  const badgesRegionsEl = document.getElementById("badges-regions");
   const mascotImg = document.getElementById("mascot-img");
   const filterPanel = document.getElementById("filter-panel");
   const filterToggle = document.getElementById("filter-toggle");
@@ -39,10 +41,11 @@
   let currentData = null;
   let currentFilter = "all";
   let currentGeneration = "all";
-  let currentEventSource = null;
+  let selectedUuid = null;
   let teamPollTimer = null;
-  let currentActivityEventSource = null;
-  let currentLeaderboardEventSource = null;
+  let teamPollUuid = null;
+  let badgesData = null;
+  let badgesRequestUuid = null;
   let leaderboardData = null;
   let currentLeaderboardCategory = "completion";
   let knownPlayers = [];
@@ -53,7 +56,7 @@
   const STRINGS = {
     fr: {
       subtitle: "Progression du pokédex par joueur",
-      tabsEmpty: "Aucun joueur connu pour l'instant — connecte-toi une fois au serveur.",
+      tabsEmpty: "Aucun joueur connu pour l'instant, connecte-toi une fois au serveur.",
       kpiCaught: "Capturés",
       kpiSeen: "Vus (non capturés)",
       kpiProgress: "Progression",
@@ -88,7 +91,7 @@
       unavailable: "Indisponible.",
       height: "Taille",
       weight: "Poids",
-      abilitiesLabel: "Capacités",
+      abilitiesLabel: "Talents",
       eggGroupsLabel: "Groupes d'œufs",
       noSpawn: "Pas de spawn naturel connu (évolution, œuf, événement…).",
       safariZonePrefix: "Safari : ",
@@ -123,6 +126,10 @@
       movePpLabel: "PP",
       moveCritRatioLabel: "Ratio critique",
       teamLabel: "Équipe actuelle",
+      badgesLabel: "Badges",
+      badgeObtainedOn: "Obtenu le",
+      badgeMissing: "Pas encore obtenu",
+      badgeOr: "ou",
       natureLabel: "Nature",
       abilityLabel: "Talent",
       heldItemLabel: "Objet tenu",
@@ -131,7 +138,7 @@
     },
     en: {
       subtitle: "Pokédex progress per player",
-      tabsEmpty: "No known players yet — join the server once.",
+      tabsEmpty: "No known players yet, join the server once.",
       kpiCaught: "Caught",
       kpiSeen: "Seen (not caught)",
       kpiProgress: "Progress",
@@ -201,6 +208,10 @@
       movePpLabel: "PP",
       moveCritRatioLabel: "Crit ratio",
       teamLabel: "Current team",
+      badgesLabel: "Badges",
+      badgeObtainedOn: "Obtained on",
+      badgeMissing: "Not obtained yet",
+      badgeOr: "or",
       natureLabel: "Nature",
       abilityLabel: "Ability",
       heldItemLabel: "Held item",
@@ -253,6 +264,14 @@
     UNDISCOVERED: { fr: "Découverte impossible", en: "Undiscovered" },
   };
 
+  // Regional form naming: French puts the region after the name, English before it.
+  const REGION_NAMES = {
+    alola: { fr: "d'Alola", en: "Alolan" },
+    galar: { fr: "de Galar", en: "Galarian" },
+    hisui: { fr: "de Hisui", en: "Hisuian" },
+    paldea: { fr: "de Paldea", en: "Paldean" },
+  };
+
   const RARITY_NAMES = {
     common: { fr: "Commun", en: "Common" },
     uncommon: { fr: "Peu commun", en: "Uncommon" },
@@ -268,11 +287,11 @@
     spd: { fr: "Déf. Spé.", en: "Sp. Def" },
     spe: { fr: "Vitesse", en: "Speed" },
   };
-  // Display order — species.baseStats from the backend is keyed by showdownId but not ordered.
+  // Display order: species.baseStats from the backend is keyed by showdownId but not ordered.
   const STAT_ORDER = ["hp", "atk", "def", "spa", "spd", "spe"];
-  const STAT_MAX = 255; // Theoretical base-stat ceiling — fixed scale so bars stay comparable
+  const STAT_MAX = 255; // Theoretical base-stat ceiling, fixed scale so bars stay comparable
   // across species, rather than each species' own highest stat looking "full".
-  const BST_MAX = 780; // Highest real BST (Mega Mewtwo/Rayquaza) — same "fixed scale" reasoning.
+  const BST_MAX = 780; // Highest real BST (Mega Mewtwo/Rayquaza), same "fixed scale" reasoning.
 
   // Thresholds tuned to the realistic base-stat range (most stats fall well under the 255
   // ceiling) rather than splitting the full 0-255 scale evenly, which would bunch almost every
@@ -292,7 +311,7 @@
     other: { fr: "Condition spéciale", en: "Special condition" },
   };
 
-  // Classic Pokémon type colors — a known convention, not a generated palette.
+  // Classic Pokémon type colors, a known convention, not a generated palette.
   const TYPE_COLORS = {
     Normal:   { bg: "#A8A878", fg: "#2b2b1f" },
     Fire:     { bg: "#F08030", fg: "#ffffff" },
@@ -320,7 +339,7 @@
     GENDERLESS: { bg: "#2f9e44", fg: "#ffffff" },
   };
 
-  // Damage category — fixed 3-value set (not a generated palette), colors chosen to stay
+  // Damage category: fixed 3-value set (not a generated palette), colors chosen to stay
   // distinct from the accent red and from each other: orange for physical, violet for special,
   // neutral gray for status (no damage).
   const CATEGORY_NAMES = {
@@ -344,13 +363,16 @@
   const EGG_GROUP_COLOR = { bg: "#7c6fd1", fg: "#ffffff" };
   const STRUCTURE_COLOR = { bg: "#8a6d3b", fg: "#ffffff" };
   const SHINY_COLOR = { bg: "#e8b923", fg: "#3a2b04" };
+  // Region pill on regional form cards ("Alola", "Paldea · Combat"): neutral, so it doesn't
+  // read as a type.
+  const FORM_PILL_COLOR = { bg: "var(--neutral-bg)", fg: "var(--text-primary)" };
 
-  // Biome badge color by category — backend-resolved (BiomeCategoryResolver.kt) via real
-  // vanilla biome tags where they exist, keyword fallback otherwise. Chosen and validated with
-  // the dataviz skill's categorical checker; a couple of adjacent-pair near-misses remain among
-  // naturally similar earth/vegetation tones (e.g. forest vs jungle) — accepted per the skill's
-  // own allowance for the CVD 6-8 floor band when a secondary encoding exists, which it does
-  // here (every badge always carries its own biome name as a text label, never color alone).
+  // Biome badge color by category, backend-resolved (BiomeCategoryResolver.kt) via real vanilla
+  // biome tags where they exist, keyword fallback otherwise. Chosen and validated with the
+  // dataviz skill's categorical checker; a couple of adjacent-pair near-misses remain among
+  // naturally similar earth/vegetation tones (forest vs jungle), accepted per the skill's own
+  // allowance for the CVD 6-8 floor band when a secondary encoding exists, which it does here
+  // (every badge always carries its own biome name as a text label, never color alone).
   const BIOME_CATEGORY_COLORS = {
     ocean:    { bg: "#3a6fd1", fg: "#ffffff" },
     beach:    { bg: "#a3812f", fg: "#ffffff" },
@@ -370,13 +392,13 @@
     nether:   { bg: "#d6362c", fg: "#ffffff" },
     end:      { bg: "#7a3fc9", fg: "#ffffff" },
     other:    { bg: "#75726c", fg: "#ffffff" },
-    // Not a real biome (CobbleSafari's per-type themed zones) — deliberately distinct hue plus a
+    // Not a real biome (CobbleSafari's per-type themed zones). Deliberately distinct hue plus a
     // text prefix (see displayBiome) so it reads as "different kind of thing", not just another
     // color in the natural-biome set.
     safari:   { bg: "#5b6ee8", fg: "#ffffff" },
   };
 
-  // Fixed display order for grouping biome badges by category — same category always appears in
+  // Fixed display order for grouping biome badges by category: same category always appears in
   // the same relative position across every species, making lists easier to scan/compare.
   const BIOME_CATEGORY_ORDER = [
     "forest", "jungle", "taiga", "savanna", "plains", "swamp", "desert", "badlands", "mountain",
@@ -405,7 +427,7 @@
     other: { fr: "Autre", en: "Other" },
   };
 
-  // Separate from the rarity/biome palettes — day/night is a spawn-time restriction, not a
+  // Separate from the rarity/biome palettes: day/night is a spawn-time restriction, not a
   // location, so it gets its own small badge next to the rarity/level ones instead of living in
   // the biome row.
   const SKY_LIGHT_COLOR = { bg: "#3a4a6b", fg: "#ffffff" };
@@ -453,23 +475,111 @@
     return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${variant}${nationalDexNumber}.png`;
   }
 
-  // Local models are produced by the /cobblesync exportmodel(s) admin command (real in-game
-  // Cobblemon renders, see ModelExportScreen) and served straight out of web/models/ — same
+  const REGION_ASPECTS = { alola: "alolan", galar: "galarian", hisui: "hisuian", paldea: "paldean" };
+
+  // { region, form } for a regional form, null otherwise. Accepts any object carrying both
+  // fields (pokedex entry, species sheet, evolution node, team member, feed entry).
+  // "grouped": a card standing for several forms of one region (Paldean Tauros' breeds), named
+  // after the region alone.
+  function formRefOf(obj) {
+    if (!obj || !obj.region || !obj.form) return null;
+    return { region: obj.region, form: obj.form, grouped: (obj.groupForms?.length || 0) > 1 };
+  }
+
+  // Region a species comes from, by generation: the label of its standard form's tab.
+  const ORIGIN_REGIONS = [
+    { fr: "Kanto", en: "Kanto" }, { fr: "Johto", en: "Johto" }, { fr: "Hoenn", en: "Hoenn" },
+    { fr: "Sinnoh", en: "Sinnoh" }, { fr: "Unys", en: "Unova" }, { fr: "Kalos", en: "Kalos" },
+    { fr: "Alola", en: "Alola" }, { fr: "Galar", en: "Galar" }, { fr: "Paldea", en: "Paldea" },
+  ];
+
+  function regionLabel(region) {
+    return region.charAt(0).toUpperCase() + region.slice(1);
+  }
+
+  // Regional groups of a species entry the player has met (no spoilers for the others).
+  function encounteredRegionals(entry) {
+    return Object.values(entry.regionals || {}).filter((r) => r.tier !== "unregistered");
+  }
+
+  // The species entry seen through one of its regional forms: that region's tier, types, forms
+  // and capture date overlaid on the species. The plain entry for the standard form, or for a
+  // region the player hasn't met.
+  function speciesView(entry, form) {
+    if (!form) return entry;
+    const group = encounteredRegionals(entry).find((r) => r.groupForms.includes(form));
+    return group ? { ...entry, ...group, form, base: entry } : entry;
+  }
+
+  // What distinguishes a form within its region, original case: "Combat" for "Paldea-Combat",
+  // "White-Striped" for Hisuian Basculin, null for a plain "Alola". Mirrors
+  // RegionalForms.variantOf() on the server, which names the exported render files.
+  function formVariant(formRef) {
+    const name = formRef.form;
+    const region = formRef.region;
+    if (name.toLowerCase() === region) return null;
+    if (name.toLowerCase().startsWith(`${region}-`)) return name.slice(region.length + 1);
+    return name;
+  }
+
+  // Render file name stem: "37", "37-alolan", "128-paldean-combat". Mirrors
+  // RegionalForms.modelFileStem() used by the /cobblesyncexport commands.
+  function modelKey(nationalDexNumber, formRef) {
+    if (!formRef) return `${nationalDexNumber}`;
+    const variant = formVariant(formRef);
+    return `${nationalDexNumber}-${REGION_ASPECTS[formRef.region] || formRef.region}${variant ? `-${variant.toLowerCase()}` : ""}`;
+  }
+
+  // Local models are produced by the /cobblesyncexport commands (real in-game
+  // Cobblemon renders, see ModelExportScreen) and served straight out of web/models/, same
   // naming convention as the other tiers below (national dex number, "-shiny" suffix).
-  function localModelUrl(nationalDexNumber, shiny) {
-    return `models/${nationalDexNumber}${shiny ? "-shiny" : ""}.png`;
+  function localModelUrl(nationalDexNumber, shiny, formRef) {
+    return `models/${modelKey(nationalDexNumber, formRef)}${shiny ? "-shiny" : ""}.png`;
   }
 
   // Community-hosted pre-rendered set (same export pipeline, just already run once and shared),
   // for servers that haven't run the local export command themselves.
-  function hostedModelUrl(nationalDexNumber, shiny) {
-    return `https://raw.githubusercontent.com/BeubeuReturns/cobblemon_sprites/main/models/${nationalDexNumber}${shiny ? "-shiny" : ""}.png`;
+  function hostedModelUrl(nationalDexNumber, shiny, formRef) {
+    return `https://raw.githubusercontent.com/BeubeuReturns/cobblemon_sprites/main/models/${modelKey(nationalDexNumber, formRef)}${shiny ? "-shiny" : ""}.png`;
+  }
+
+  // PokeAPI files regional forms under their own ids (Alolan Vulpix = 10103), found through the
+  // species' "varieties". One lookup per dex/form per page load.
+  const pokeapiFormIds = new Map();
+  function pokeapiFormId(nationalDexNumber, formRef) {
+    const key = `${nationalDexNumber}|${formRef.form}`;
+    if (!pokeapiFormIds.has(key)) {
+      const variant = formVariant(formRef)?.toLowerCase();
+      pokeapiFormIds.set(key, fetch(`https://pokeapi.co/api/v2/pokemon-species/${nationalDexNumber}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (!data) return null;
+          const varieties = data.varieties.map((v) => ({
+            name: v.pokemon.name,
+            id: Number(v.pokemon.url.split("/").filter(Boolean).pop()),
+          }));
+          const regional = varieties.filter((v) => v.name.includes(`-${formRef.region}`));
+          // Hisuian Basculin is "basculin-white-striped" there, with no region in the name.
+          const match = (variant && regional.find((v) => v.name.includes(variant)))
+            || regional[0]
+            || (variant && varieties.find((v) => v.name.includes(variant)));
+          return match ? match.id : null;
+        })
+        .catch(() => null));
+    }
+    return pokeapiFormIds.get(key);
   }
 
   // Fallback order: this server's own local export, then the community-hosted real-model set,
-  // then PokeAPI (shiny, then normal as a last resort for shiny requests), then hidden.
-  function setSprite(imgEl, nationalDexNumber, shiny) {
-    const candidates = [localModelUrl(nationalDexNumber, shiny), hostedModelUrl(nationalDexNumber, shiny), spriteUrl(nationalDexNumber, shiny)];
+  // then PokeAPI (shiny, then normal as a last resort for shiny requests), then hidden. For a
+  // regional form, its own images come first, the species' images last.
+  function setSprite(imgEl, nationalDexNumber, shiny, formRef) {
+    const candidates = [];
+    if (formRef) {
+      candidates.push(localModelUrl(nationalDexNumber, shiny, formRef), hostedModelUrl(nationalDexNumber, shiny, formRef));
+      candidates.push(() => pokeapiFormId(nationalDexNumber, formRef).then((id) => (id ? spriteUrl(id, shiny) : null)));
+    }
+    candidates.push(localModelUrl(nationalDexNumber, shiny), hostedModelUrl(nationalDexNumber, shiny), spriteUrl(nationalDexNumber, shiny));
     if (shiny) candidates.push(spriteUrl(nationalDexNumber, false));
 
     let index = 0;
@@ -478,11 +588,34 @@
         imgEl.hidden = true;
         return;
       }
-      imgEl.src = candidates[index++];
+      const candidate = candidates[index++];
+      if (typeof candidate === "function") {
+        candidate().then((url) => (url ? (imgEl.src = url) : tryNext()));
+      } else {
+        imgEl.src = candidate;
+      }
     };
     imgEl.onerror = tryNext;
     imgEl.hidden = false;
     tryNext();
+  }
+
+  // "Goupix d'Alola" / "Alolan Vulpix", plus the variant for multi-form regions:
+  // "Tauros de Paldea (Combat)".
+  function regionalName(baseName, formRef) {
+    if (!formRef) return baseName;
+    const region = REGION_NAMES[formRef.region];
+    const variant = formRef.grouped ? null : formVariant(formRef);
+    const name = region
+      ? (currentLang === "fr" ? `${baseName} ${region.fr}` : `${region.en} ${baseName}`)
+      : `${baseName} (${formRef.form})`;
+    return variant ? `${name} (${variant})` : name;
+  }
+
+  // Localized name of anything carrying nameEn/nameFr (+ region/form for regional forms).
+  function speciesDisplayName(obj, fallbackId) {
+    const base = (currentLang === "fr" ? obj.nameFr : obj.nameEn) || displaySpeciesNameFallback(fallbackId || obj.id || "");
+    return regionalName(base, formRefOf(obj));
   }
 
   // "Complete" = caught + every known form caught + a shiny seen + every possible gender seen.
@@ -523,12 +656,15 @@
     return el;
   }
 
-  async function getSpeciesInfo(id) {
-    if (speciesInfoCache.has(id)) return speciesInfoCache.get(id);
-    const promise = fetch(`/api/species/${id}`)
+  // form: a regional form name ("Alola") for that form's own sheet, omitted for the species.
+  async function getSpeciesInfo(id, form) {
+    const key = form ? `${id}#${form}` : id;
+    if (speciesInfoCache.has(key)) return speciesInfoCache.get(key);
+    const url = form ? `/api/species/${id}?form=${encodeURIComponent(form)}` : `/api/species/${id}`;
+    const promise = fetch(url)
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
-    speciesInfoCache.set(id, promise);
+    speciesInfoCache.set(key, promise);
     return promise;
   }
 
@@ -554,10 +690,11 @@
     }
     loadActivityFeed();
     if (leaderboardData) renderLeaderboard();
+    if (badgesData) renderBadges(badgesData);
     if (!comparePanel.hidden) loadComparison();
     // Re-render in place rather than closing: getSpeciesInfo is cached, so this is free.
     if (!speciesModalEl.hidden && speciesModalSpecies) openSpeciesModal(speciesModalSpecies, speciesModalTrigger);
-    // No fetch involved (the data came from the team poll, already in hand) — just rebuild.
+    // No fetch involved (the data came from the team poll, already in hand), just rebuild.
     if (!speciesModalEl.hidden && speciesModalPokemon) openPokemonModal(speciesModalPokemon, speciesModalTrigger);
   }
 
@@ -620,9 +757,10 @@
   function selectPlayer(uuid, btn) {
     tabsEl.querySelectorAll(".player-tab").forEach((b) => b.classList.remove("is-active"));
     btn.classList.add("is-active");
+    selectedUuid = uuid;
     loadPokedex(uuid);
-    connectEvents(uuid);
     connectTeamPolling(uuid);
+    loadBadges(uuid);
   }
 
   async function loadActivityFeed() {
@@ -631,10 +769,20 @@
     renderActivityFeed(entries);
   }
 
-  function connectActivityEvents() {
-    if (currentActivityEventSource) currentActivityEventSource.close();
-    currentActivityEventSource = new EventSource("/api/capture-log/events");
-    currentActivityEventSource.addEventListener("capture-log-updated", loadActivityFeed);
+  // One SSE stream for everything (signals only, the page refetches). Browsers allow 6
+  // connections per host across tabs: one stream per feed starved image loads with two tabs open.
+  function connectEvents() {
+    const events = new EventSource("/api/events");
+    events.addEventListener("capture-log-updated", loadActivityFeed);
+    events.addEventListener("leaderboard-updated", loadLeaderboard);
+    // Also sent when a PokeBadges badge is awarded/removed/restored.
+    events.addEventListener("pokedex-updated", (e) => {
+      let uuid = null;
+      try { uuid = JSON.parse(e.data).uuid; } catch (_) { /* malformed: ignore */ }
+      if (!selectedUuid || uuid !== selectedUuid) return;
+      loadPokedex(selectedUuid);
+      loadBadges(selectedUuid);
+    });
   }
 
   function renderActivityFeed(entries) {
@@ -657,7 +805,7 @@
       const playerName = document.createElement("span");
       playerName.className = "activity-player";
       const player = knownPlayers.find((p) => p.uuid === entry.playerUuid);
-      playerName.textContent = player ? player.name : "?";
+      playerName.textContent = entry.playerName || (player ? player.name : "?");
       text.appendChild(playerName);
 
       const verb = document.createElement("span");
@@ -667,7 +815,10 @@
 
       const speciesName = document.createElement("span");
       speciesName.className = "activity-species";
-      speciesName.textContent = "…";
+      speciesName.textContent = speciesDisplayName(
+        { nameEn: entry.speciesNameEn, nameFr: entry.speciesNameFr, region: entry.region, form: entry.form },
+        entry.speciesId
+      );
       text.appendChild(speciesName);
 
       if (entry.shiny) {
@@ -686,15 +837,8 @@
 
       activityFeedEl.appendChild(row);
 
-      getSpeciesInfo(entry.speciesId).then((info) => {
-        if (!info) return;
-        speciesName.textContent = currentLang === "fr" ? info.nameFr : info.nameEn;
-        if (info.nationalDexNumber) {
-          sprite.src = spriteUrl(info.nationalDexNumber, entry.shiny);
-          sprite.hidden = false;
-          sprite.addEventListener("error", () => { sprite.hidden = true; }, { once: true });
-        }
-      });
+      // Same source chain as the grid (local renders, hosted renders, then PokeAPI).
+      if (entry.nationalDexNumber) setSprite(sprite, entry.nationalDexNumber, entry.shiny, formRefOf(entry));
     });
   }
 
@@ -702,12 +846,6 @@
     const res = await fetch("/api/leaderboard");
     leaderboardData = await res.json();
     renderLeaderboard();
-  }
-
-  function connectLeaderboardEvents() {
-    if (currentLeaderboardEventSource) currentLeaderboardEventSource.close();
-    currentLeaderboardEventSource = new EventSource("/api/leaderboard/events");
-    currentLeaderboardEventSource.addEventListener("leaderboard-updated", loadLeaderboard);
   }
 
   function formatLeaderboardValue(category, entry) {
@@ -738,7 +876,7 @@
     });
   }
 
-  // 1v1 comparison reuses /api/players/{uuid}/pokedex for both players — no dedicated
+  // 1v1 comparison reuses /api/players/{uuid}/pokedex for both players, no dedicated
   // endpoint, just a client-side diff. No SSE hookup: it's an on-demand check, not an
   // ambient panel like activity/leaderboard, so a manual re-select is enough to refresh it.
   async function loadComparison() {
@@ -753,10 +891,6 @@
     const dataA = await resA.json();
     const dataB = await resB.json();
     renderComparison(dataA, dataB);
-  }
-
-  function speciesDisplayName(id, data) {
-    return (currentLang === "fr" ? data.nameFr : data.nameEn) || displaySpeciesNameFallback(id);
   }
 
   function renderComparisonSide(listEl, headerEl, ownData, otherData, playerName) {
@@ -781,7 +915,7 @@
       row.className = "compare-row";
       row.innerHTML = `<span class="compare-row-dex"></span><span class="compare-row-name"></span>`;
       row.querySelector(".compare-row-dex").textContent = data.nationalDexNumber ? `#${String(data.nationalDexNumber).padStart(3, "0")}` : "";
-      row.querySelector(".compare-row-name").textContent = speciesDisplayName(id, data);
+      row.querySelector(".compare-row-name").textContent = speciesDisplayName(data, id);
       listEl.appendChild(row);
     });
   }
@@ -793,22 +927,98 @@
     renderComparisonSide(compareBList, compareBHeader, dataB, dataA, nameB);
   }
 
-  function connectEvents(uuid) {
-    if (currentEventSource) currentEventSource.close();
-    // Signal only (no diff): just refetch /pokedex normally.
-    currentEventSource = new EventSource(`/api/players/${uuid}/events`);
-    currentEventSource.addEventListener("pokedex-updated", () => loadPokedex(uuid));
+  async function loadBadges(uuid) {
+    badgesRequestUuid = uuid;
+    let data = null;
+    try {
+      const res = await fetch(`/api/players/${uuid}/badges`);
+      data = res.ok ? await res.json() : null;
+    } catch {
+      data = null;
+    }
+    // A slower response for a previously selected player must not overwrite the current one.
+    if (badgesRequestUuid !== uuid) return;
+    badgesData = data;
+    renderBadges(data);
   }
 
-  // Polled rather than pushed over SSE — the team endpoint is only ever a cheap in-memory read
+  function formatBadgeDate(millis) {
+    return new Date(millis).toLocaleDateString(currentLang === "fr" ? "fr-FR" : "en-GB");
+  }
+
+  function badgeTooltip(badge) {
+    const name = currentLang === "fr" ? badge.nameFr : badge.nameEn;
+    const leader = currentLang === "fr" ? badge.leaderFr : badge.leaderEn;
+    const type = currentLang === "fr" ? badge.typeFr : badge.typeEn;
+    const details = [leader, type ? `(${type})` : null].filter(Boolean).join(" ");
+    return details ? `${name} · ${details}` : name;
+  }
+
+  function renderBadges(data) {
+    badgesRegionsEl.innerHTML = "";
+    if (!data || !data.available || !data.regions || data.regions.length === 0) {
+      badgesRowEl.hidden = true;
+      return;
+    }
+    badgesRowEl.hidden = false;
+
+    data.regions.forEach((region) => {
+      const row = document.createElement("div");
+      row.className = "badge-region";
+
+      const ownedCount = region.slots.filter((slot) => slot.ownedBadgeId).length;
+      const label = document.createElement("div");
+      label.className = "badge-region-label";
+      label.textContent = currentLang === "fr" ? region.nameFr : region.nameEn;
+      const count = document.createElement("span");
+      count.className = "badge-region-count";
+      count.textContent = `${ownedCount}/${region.slots.length}`;
+      label.appendChild(count);
+      row.appendChild(label);
+
+      const slotsEl = document.createElement("div");
+      slotsEl.className = "badge-region-slots";
+      region.slots.forEach((slot) => {
+        // The API returns a list per slot; PokeBadges 2.0.0 always puts exactly one badge in it.
+        const owned = slot.badges.find((b) => b.id === slot.ownedBadgeId);
+        const shown = owned || slot.badges[0];
+        if (!shown) return;
+
+        const icon = document.createElement("img");
+        icon.className = "badge-slot" + (owned ? "" : " badge-slot-missing");
+        icon.src = `/api/item/${shown.id}`;
+        icon.alt = currentLang === "fr" ? shown.nameFr : shown.nameEn;
+        icon.addEventListener("error", () => { icon.style.visibility = "hidden"; }, { once: true });
+
+        const lines = owned
+          ? [badgeTooltip(owned)]
+          : [slot.badges.map(badgeTooltip).join(` ${t("badgeOr")} `)];
+        if (owned && slot.obtainedAt) lines.push(`${t("badgeObtainedOn")} ${formatBadgeDate(slot.obtainedAt)}`);
+        if (!owned) lines.push(t("badgeMissing"));
+        icon.title = lines.join("\n");
+
+        slotsEl.appendChild(icon);
+      });
+      row.appendChild(slotsEl);
+      badgesRegionsEl.appendChild(row);
+    });
+  }
+
+  // Polled rather than pushed over SSE: the team endpoint is only ever a cheap in-memory read
   // for online players (see PokedexHandler.handleTeam), so a plain interval avoids adding yet
   // another open socket + Cobblemon event subscription just to show something that's inherently
   // "good enough" to refresh every few seconds rather than instantly.
   function connectTeamPolling(uuid) {
     if (teamPollTimer) clearInterval(teamPollTimer);
+    teamPollUuid = uuid;
     loadTeam(uuid);
-    teamPollTimer = setInterval(() => loadTeam(uuid), 10_000);
+    // Skipped while the browser tab is hidden; refreshed as soon as it's visible again (below).
+    teamPollTimer = setInterval(() => { if (!document.hidden) loadTeam(uuid); }, 10_000);
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && teamPollUuid) loadTeam(teamPollUuid);
+  });
 
   async function loadTeam(uuid) {
     const res = await fetch(`/api/players/${uuid}/team`);
@@ -838,14 +1048,14 @@
       const sprite = document.createElement("img");
       sprite.className = "team-card-sprite";
       sprite.alt = pokemon.nameEn;
-      setSprite(sprite, pokemon.nationalDexNumber, pokemon.shiny);
+      setSprite(sprite, pokemon.nationalDexNumber, pokemon.shiny, formRefOf(pokemon));
       card.appendChild(sprite);
 
       if (pokemon.shiny) card.appendChild(badge("✨", { bg: "var(--shiny-color)", fg: "#3a2b00" }, "team-card-shiny"));
 
       const name = document.createElement("div");
       name.className = "team-card-name";
-      name.textContent = pokemon.nickname || (currentLang === "fr" ? pokemon.nameFr : pokemon.nameEn);
+      name.textContent = pokemon.nickname || speciesDisplayName(pokemon, pokemon.speciesId);
       card.appendChild(name);
 
       const meta = document.createElement("div");
@@ -875,7 +1085,7 @@
       card.appendChild(hpLabel);
 
       // Opens the same nature/ability/held-item/IV-EV detail popup used for the species modal
-      // shell (see openPokemonModal) — same clickable-card accessibility pattern as species names.
+      // shell (see openPokemonModal), same clickable-card accessibility pattern as species names.
       card.setAttribute("role", "button");
       card.setAttribute("tabindex", "0");
       const openModal = () => openPokemonModal(pokemon, card);
@@ -905,8 +1115,9 @@
     kpiCaught.textContent = caughtCount;
     kpiSeen.textContent = seenCount;
 
-    const percent = totalKnownSpecies > 0 ? Math.round((caughtCount / totalKnownSpecies) * 100) : 0;
-    kpiPercent.textContent = `${percent}% (${caughtCount}/${totalKnownSpecies})`;
+    const percent = totalKnownSpecies > 0 ? (caughtCount / totalKnownSpecies) * 100 : 0;
+    // One decimal, same as the leaderboard: whole numbers showed 0% for 1/1022 there vs 0.1% here.
+    kpiPercent.textContent = `${percent.toFixed(1)}% (${caughtCount}/${totalKnownSpecies})`;
     kpiMeterFill.style.width = `${percent}%`;
   }
 
@@ -930,24 +1141,28 @@
     currentGeneration = generationSelect.value;
   }
 
+  // The species object cards and the detail modal work with. "???" if never seen (no spoiler, not
+  // searchable), otherwise the localized name, falling back to the id if missing.
+  function playerSpeciesEntry(id, data) {
+    return {
+      id,
+      name: data.tier === "unregistered" ? "???" : speciesDisplayName(data, id),
+      ...data,
+    };
+  }
+
   function renderGrid() {
     if (!currentData) return;
     gridEl.innerHTML = "";
 
     const query = searchInput.value.trim().toLowerCase();
     const entries = Object.entries(currentData.species)
-      // "???" if never seen (no spoiler, not searchable). Otherwise the localized name, falling
-      // back to the id if missing.
-      .map(([id, data]) => ({
-        id,
-        name: data.tier === "unregistered"
-          ? "???"
-          : (currentLang === "fr" ? data.nameFr : data.nameEn) || displaySpeciesNameFallback(id),
-        ...data,
-      }))
+      .map(([id, data]) => playerSpeciesEntry(id, data))
       .filter((s) => (currentFilter === "all" ? true : s.tier === currentFilter))
       .filter((s) => (currentGeneration === "all" ? true : String(generationOf(s.nationalDexNumber)) === currentGeneration))
-      .filter((s) => s.name.toLowerCase().includes(query))
+      // Regional names match too: "alola" finds every Alolan form met.
+      .filter((s) => [s.name, ...encounteredRegionals(s).map((r) => regionalName(s.name, formRefOf(r)))]
+        .some((n) => n.toLowerCase().includes(query)))
       .sort((a, b) => (a.nationalDexNumber ?? 9999) - (b.nationalDexNumber ?? 9999));
 
     gridEmptyEl.hidden = entries.length > 0;
@@ -988,9 +1203,19 @@
     return card;
   }
 
+  // What a card pictures: the standard form, or the first regional form met when the player has
+  // only met regional ones (an Alolan Vulpix alone shows as Alolan, not Kanto).
+  function cardFace(species) {
+    const standardMet = Object.values(species.forms || {}).some((f) => f.tier !== "unregistered");
+    const regional = encounteredRegionals(species)[0];
+    return !standardMet && regional ? speciesView(species, regional.form) : species;
+  }
+
   function renderCard(species) {
     const card = document.createElement("article");
     card.className = "species-card" + (isFullyComplete(species) ? " species-card-complete" : "");
+    const face = cardFace(species);
+    card._face = face;
 
     const spriteWrap = document.createElement("div");
     spriteWrap.className = "sprite-wrap";
@@ -1003,9 +1228,9 @@
     spriteWrap.appendChild(sprite);
 
     // species.aspects (the species-level aggregate from Cobblemon) doesn't reliably include
-    // "shiny" even when a form's own shinyStates does — same per-form source isFullyComplete()
+    // "shiny" even when a form's own shinyStates does. Same per-form source isFullyComplete()
     // already trusts for the gold border, so use that here too instead of species.aspects.
-    const hasShinyForm = Object.values(species.forms || {}).some((f) => f.shinyStates.includes("shiny"));
+    const hasShinyForm = Object.values(face.forms || {}).some((f) => f.shinyStates.includes("shiny"));
 
     if (hasShinyForm) {
       const shinyIcon = document.createElement("span");
@@ -1016,12 +1241,12 @@
     }
 
     // Shiny shown by default when one has been seen/caught. Arrows just flip between the two
-    // sprites — only shown when there's actually a shiny to toggle to.
+    // sprites, only shown when there's actually a shiny to toggle to.
     card._isShiny = hasShinyForm;
     if (card._isShiny) {
       const toggleSprite = () => {
         card._isShiny = !card._isShiny;
-        if (species.nationalDexNumber) setSprite(sprite, species.nationalDexNumber, card._isShiny);
+        if (species.nationalDexNumber) setSprite(sprite, species.nationalDexNumber, card._isShiny, formRefOf(face));
       };
 
       const prevBtn = document.createElement("button");
@@ -1056,6 +1281,7 @@
     const name = document.createElement("div");
     name.className = "species-name";
     name.textContent = species.name;
+    name.title = species.name;
     header.appendChild(name);
 
     const statusGroup = document.createElement("div");
@@ -1066,18 +1292,30 @@
     statusBadge.textContent = species.tier === "caught" ? t("badgeCaught") : t("badgeSeen");
     statusGroup.appendChild(statusBadge);
 
+    header.appendChild(statusGroup);
+
+    card.appendChild(header);
+
     if (species.caughtAtMillis) {
       const caughtDate = new Date(species.caughtAtMillis);
       const dateEl = document.createElement("span");
       dateEl.className = "caught-date";
-      dateEl.textContent = new Intl.DateTimeFormat(currentLang === "fr" ? "fr-FR" : "en-US", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(caughtDate);
-      dateEl.title = `${t("caughtOn")} ${new Intl.DateTimeFormat(currentLang === "fr" ? "fr-FR" : "en-US", { dateStyle: "medium" }).format(caughtDate)}`;
-      statusGroup.appendChild(dateEl);
+      dateEl.textContent = `${t("caughtOn")} ${new Intl.DateTimeFormat(currentLang === "fr" ? "fr-FR" : "en-US", { dateStyle: "medium" }).format(caughtDate)}`;
+      card.appendChild(dateEl);
     }
 
-    header.appendChild(statusGroup);
-
-    card.appendChild(header);
+    // Regional forms met, one pill per region; their details are in the sheet's tabs.
+    const regionals = encounteredRegionals(species);
+    if (regionals.length > 0) {
+      const regionRow = document.createElement("div");
+      regionRow.className = "badge-row";
+      regionals.forEach((r) => {
+        const pill = badge(regionLabel(r.region), FORM_PILL_COLOR, "form-pill" + (r.tier === "caught" ? "" : " form-pill-seen"));
+        pill.title = `${regionalName(species.name, formRefOf(r))} · ${t(r.tier === "caught" ? "caughtWord" : "seenWord")}`;
+        regionRow.appendChild(pill);
+      });
+      card.appendChild(regionRow);
+    }
 
     const typeRow = document.createElement("div");
     typeRow.className = "badge-row";
@@ -1085,9 +1323,9 @@
 
     const traitsRow = document.createElement("div");
     traitsRow.className = "badge-row";
-    // Only render aspects we know how to label meaningfully — other mods (cosmetic/hat addons,
+    // Only render aspects we know how to label meaningfully. Other mods (cosmetic/hat addons,
     // etc.) can inject arbitrary extra aspect strings we have no useful way to display.
-    species.aspects.forEach((aspect) => {
+    (face.aspects || []).forEach((aspect) => {
       if (aspect === "shiny") {
         traitsRow.appendChild(badge("✦ Shiny", SHINY_COLOR));
       } else if (aspect === "male") {
@@ -1099,12 +1337,12 @@
     if (traitsRow.children.length > 0) card.appendChild(traitsRow);
 
     // Clicking the name opens the full detail modal (forms, abilities, egg groups, spawns, base
-    // stats, evolutions, description — everything that used to be an inline "Détails ▾" expand
+    // stats, evolutions, description: everything that used to be an inline "Détails ▾" expand
     // now lives there instead, keeping the card itself scannable).
     name.classList.add("species-name-clickable");
     name.setAttribute("role", "button");
     name.setAttribute("tabindex", "0");
-    const openModal = () => openSpeciesModal(species, name);
+    const openModal = () => openSpeciesModal(face, name);
     name.addEventListener("click", openModal);
     name.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
@@ -1120,7 +1358,7 @@
     return card;
   }
 
-  /** Height/weight + abilities + egg groups — shared between the modal and nothing else now,
+  /** Height/weight + abilities + egg groups, shared between the modal and nothing else now,
    * but kept as its own function since it's a natural, reusable content unit. */
   function buildInfoSection(info) {
     const container = document.createElement("div");
@@ -1145,7 +1383,7 @@
       container.appendChild(abilitiesRow);
     }
 
-    // Egg groups + drops side by side — both are short lists, no reason to each take a full row.
+    // Egg groups + drops side by side: both are short lists, no reason to each take a full row.
     const dualRow = document.createElement("div");
     dualRow.className = "dual-column-row";
 
@@ -1201,7 +1439,7 @@
       }
       entry.appendChild(head);
 
-      // Grouped by category (forest, ocean, desert...) instead of one long flat wrapped list —
+      // Grouped by category (forest, ocean, desert...) instead of one long flat wrapped list,
       // each group gets its own small colored heading and its own "+N" toggle, so a 100+-biome
       // species reads as a handful of labeled clusters instead of a wall of same-shaped pills.
       const biomesByCategory = new Map();
@@ -1216,7 +1454,7 @@
       entry.appendChild(groupsContainer);
 
       // Compact by design: the category label sits inline as the row's first item (not its own
-      // heading line) and only 3 biomes show per category by default — a species with a dozen
+      // heading line) and only 3 biomes show per category by default. A species with a dozen
       // categories still reads as a dozen short lines, not a dozen full sections.
       const visibleCount = 3;
       BIOME_CATEGORY_ORDER.filter((category) => biomesByCategory.has(category)).forEach((category) => {
@@ -1286,7 +1524,7 @@
       chip.className = "item-chip";
 
       // Not every item has an extractable icon (vanilla items have no texture available
-      // server-side at all) — hide the <img> rather than show a broken-image icon.
+      // server-side at all). Hide the <img> rather than show a broken-image icon.
       const icon = document.createElement("img");
       icon.className = "item-chip-icon";
       icon.src = `/api/item/${drop.item}`;
@@ -1295,7 +1533,7 @@
       chip.appendChild(icon);
 
       const label = document.createElement("span");
-      label.textContent = `${displayItemName(drop.item)} · ${drop.percentage}%`;
+      label.textContent = `${itemName(drop.item, drop.itemNameEn, drop.itemNameFr)} · ${drop.percentage}%`;
       chip.appendChild(label);
 
       row.appendChild(chip);
@@ -1304,7 +1542,7 @@
     return container;
   }
 
-  // Single shared tooltip element (not document.body-per-row) — populated and repositioned on
+  // Single shared tooltip element (not document.body-per-row), populated and repositioned on
   // each hover instead of building one per move, since a species can have hundreds of moves.
   // Kept visibility:hidden rather than display:none while idle so getBoundingClientRect() still
   // returns real dimensions for positioning before it's actually revealed (no flash-then-jump).
@@ -1345,7 +1583,7 @@
       lines.push(move.accuracy > 0 ? `${t("moveAccuracyLabel")}: ${move.accuracy}` : t("moveNeverMiss"));
     }
     if (move.pp !== undefined) lines.push(`${t("movePpLabel")}: ${move.pp}/${move.maxPp}`);
-    // Cobblemon's default crit ratio is 1 for nearly every move — only worth surfacing when a
+    // Cobblemon's default crit ratio is 1 for nearly every move, only worth surfacing when a
     // move actually deviates from that (e.g. Slash, Night Slash), otherwise it's noise repeated
     // on every single tooltip.
     if (move.critRatio && move.critRatio > 1) lines.push(`${t("moveCritRatioLabel")}: ×${move.critRatio}`);
@@ -1376,7 +1614,7 @@
     if (moveTooltipEl) moveTooltipEl.classList.remove("is-visible");
   }
 
-  /** Move name/level row shared by the level-up grid and the TM/tutor/egg name lists — attaches
+  /** Move name/level row shared by the level-up grid and the TM/tutor/egg name lists. Attaches
    * the hover/focus tooltip so full battle detail (type/power/accuracy/PP/crit/description) is
    * available without permanently showing it, in the theme of this mod rather than a dependency
    * on the in-game mod that inspired it. */
@@ -1403,8 +1641,8 @@
     return entry;
   }
 
-  // Name-only move grid (TM/tutor/egg moves have no associated level) with a "+N" collapse —
-  // some species have a hundred-plus TM moves alone (Clefairy ~150), so showing them all by
+  // Name-only move grid (TM/tutor/egg moves have no associated level) with a "+N" collapse.
+  // Some species have a hundred-plus TM moves alone (Clefairy ~150), so showing them all by
   // default would dwarf the rest of the modal. Same collapse pattern as the biome groups above.
   function buildMoveNameList(moves, visibleCount) {
     const wrap = document.createElement("div");
@@ -1473,7 +1711,7 @@
     return container;
   }
 
-  /** Forms list — comes from the player's own pokedex data (species param), not /api/species. */
+  /** Forms list, comes from the player's own pokedex data (species param), not /api/species. */
   function buildFormsSection(species) {
     const formEntries = Object.entries(species.forms || {});
     if (formEntries.length === 0) return null;
@@ -1513,7 +1751,7 @@
   }
 
   // One consistent hue for all 6 bars (they're the same "kind" of value, not distinct series
-  // needing identity) — reuses the exact fill/track pair already used for the completion meter.
+  // needing identity). Reuses the exact fill/track pair already used for the completion meter.
   function buildStatsSection(baseStats) {
     const container = document.createElement("div");
     container.className = "stat-bars";
@@ -1596,8 +1834,12 @@
     return wrap;
   }
 
-  // No item lang-file resolver in this project (unlike species/ability names) — same
-  // capitalize-the-id fallback convention already used for biome/structure names.
+  // Real name resolved server-side (ItemNames.kt) when the item's mod ships a lang file.
+  function itemName(resourceLocation, nameEn, nameFr) {
+    return (currentLang === "fr" ? nameFr : nameEn) || displayItemName(resourceLocation);
+  }
+
+  // Fallback when no translation exists: capitalize the id, same convention as biome/structure names.
   function displayItemName(resourceLocation) {
     const path = resourceLocation.includes(":") ? resourceLocation.split(":")[1] : resourceLocation;
     return path.split("_").map(capitalizeFirst).join(" ");
@@ -1605,9 +1847,18 @@
 
   function evolutionTriggerLabel(trigger) {
     if (trigger.kind === "level") return `${t("levelAbbrev")} ${trigger.level}`;
-    if (trigger.kind === "item" && trigger.item) return displayItemName(trigger.item);
+    if (trigger.kind === "item" && trigger.item) return itemName(trigger.item, trigger.itemNameEn, trigger.itemNameFr);
     const table = EVOLUTION_TRIGGER_NAMES[trigger.kind] || EVOLUTION_TRIGGER_NAMES.other;
     return table[currentLang];
+  }
+
+  // Where a regional evolution must happen: "Plage, Jungle", or "hors Plage" for the
+  // standard one. A required list says it all, the exclusions only matter on their own.
+  function evolutionBiomeLabel(trigger) {
+    const names = (list) => list.map((c) => (BIOME_CATEGORY_NAMES[c] && BIOME_CATEGORY_NAMES[c][currentLang]) || c).join(", ");
+    if (trigger.biomes?.length) return names(trigger.biomes);
+    if (trigger.notBiomes?.length) return `${currentLang === "fr" ? "hors" : "not in"} ${names(trigger.notBiomes)}`;
+    return null;
   }
 
   function buildEvolutionNode(ref, current) {
@@ -1617,13 +1868,33 @@
     const sprite = document.createElement("img");
     sprite.className = "evolution-node-sprite";
     sprite.alt = ref.nameEn;
-    if (ref.nationalDexNumber) setSprite(sprite, ref.nationalDexNumber, false);
+    if (ref.nationalDexNumber) setSprite(sprite, ref.nationalDexNumber, false, formRefOf(ref));
     node.appendChild(sprite);
 
     const name = document.createElement("span");
     name.className = "evolution-node-name";
-    name.textContent = currentLang === "fr" ? ref.nameFr : ref.nameEn;
+    name.textContent = speciesDisplayName(ref);
     node.appendChild(name);
+
+    // Opens that species' sheet on this node's form, but only if it's in the viewed player's dex:
+    // the modal shows that player's forms/catch data, which doesn't exist for a species they never
+    // encountered.
+    const dexData = !current && ref.id && currentData ? currentData.species[ref.id] : null;
+    if (dexData && dexData.tier !== "unregistered") {
+      node.classList.add("evolution-node-clickable");
+      node.setAttribute("role", "button");
+      node.setAttribute("tabindex", "0");
+      node.title = name.textContent;
+      // Keep the original trigger: this node disappears once the new sheet renders.
+      const open = () => openSpeciesModal(speciesView(playerSpeciesEntry(ref.id, dexData), ref.form), speciesModalTrigger);
+      node.addEventListener("click", open);
+      node.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      });
+    }
 
     return node;
   }
@@ -1634,7 +1905,7 @@
     const glyph = document.createElement("span");
     glyph.className = "evolution-arrow-glyph";
     // A branch's first arrow uses a distinct "branches off from above" glyph instead of the plain
-    // continuation arrow — otherwise a branch row starts with a bare → pointing at nothing, with
+    // continuation arrow, otherwise a branch row starts with a bare → pointing at nothing, with
     // no visual link back to the species it's an alternative evolution of.
     glyph.textContent = isBranchStart ? "↳" : "→";
     arrow.appendChild(glyph);
@@ -1643,6 +1914,13 @@
       label.className = "evolution-arrow-label";
       label.textContent = evolutionTriggerLabel(trigger);
       arrow.appendChild(label);
+      const biomes = evolutionBiomeLabel(trigger);
+      if (biomes) {
+        const biomeEl = document.createElement("span");
+        biomeEl.className = "evolution-arrow-label evolution-arrow-biome";
+        biomeEl.textContent = biomes;
+        arrow.appendChild(biomeEl);
+      }
     }
     return arrow;
   }
@@ -1655,13 +1933,12 @@
     (evo.evolvesTo || []).forEach((next) => appendEvolutionBranch(container, next, false));
   }
 
-  // Informational only — entries aren't clickable (they're static species refs, not the
-  // player-specific caught/seen data the modal needs for the currently-open card).
+  // Nodes for species in the viewed player's dex open their own sheet (see buildEvolutionNode).
   //
-  // A branch can appear at two different points: an ANCESTOR had another evolution besides the
-  // one that leads to the currently-open species (info.evolvesFrom[i].altEvolutions — e.g.
+  // A branch can appear at two different points: an ancestor had another evolution besides the
+  // one that leads to the currently-open species (info.evolvesFrom[i].altEvolutions, e.g.
   // opening Poliwrath's own card still needs to show Politoed, even though Politoed isn't on
-  // Poliwrath's ancestry or descendant line), or the CURRENT species itself branches
+  // Poliwrath's ancestry or descendant line), or the current species itself branches
   // (info.evolvesTo, beyond the first). Both cases render as their own row below the trunk,
   // each anchored (for horizontal alignment) to the arrow that follows the node it branches from.
   function buildEvolutionSection(info) {
@@ -1672,7 +1949,7 @@
     trunkRow.className = "evolution-chain-row";
     container.appendChild(trunkRow);
 
-    // { anchorEl, evos } pairs — anchorEl is the trunk-row arrow the branch row(s) should line
+    // { anchorEl, evos } pairs: anchorEl is the trunk-row arrow the branch row(s) should line
     // up under, resolved once this section is attached to the live DOM (see _alignEvolutionBranches).
     const branchGroups = [];
 
@@ -1680,7 +1957,7 @@
     (info.evolvesFrom || []).forEach((ancestor) => {
       trunkRow.appendChild(buildEvolutionNode(ancestor, false));
       // ancestor.trigger describes how THAT ancestor evolves into the next step in the chain
-      // (looked up server-side via its own forward evolutions) — not the reverse direction.
+      // (looked up server-side via its own forward evolutions), not the reverse direction.
       const arrowEl = evolutionArrow(ancestor.trigger || null);
       trunkRow.appendChild(arrowEl);
       if (ancestor.altEvolutions && ancestor.altEvolutions.length > 0) {
@@ -1688,11 +1965,11 @@
       }
     });
 
-    trunkRow.appendChild(buildEvolutionNode({ nameEn: info.nameEn, nameFr: info.nameFr, nationalDexNumber: info.nationalDexNumber }, true));
+    trunkRow.appendChild(buildEvolutionNode(info, true));
 
     const evolvesTo = info.evolvesTo || [];
     // The first evolution continues on the same line as the trunk (matches the no-branching case
-    // visually) — only additional alternatives (e.g. Poliwhirl -> Politoed via trade, on top of
+    // visually). Only additional alternatives (e.g. Poliwhirl -> Politoed via trade, on top of
     // -> Poliwrath via Water Stone) drop to their own row below, instead of every branch getting
     // its own row including the first.
     if (evolvesTo.length > 0) {
@@ -1714,7 +1991,7 @@
     });
 
     // offsetLeft only reflects real layout once this subtree is attached to the visible
-    // document — this section is still detached at this point, so the actual alignment happens
+    // document, this section is still detached at this point, so the actual alignment happens
     // in a callback the caller invokes right after appending it.
     container._alignEvolutionBranches = () => {
       container.querySelectorAll(".evolution-chain-branch").forEach((row) => {
@@ -1748,7 +2025,8 @@
     speciesModalBodyEl.textContent = t("loading");
     speciesModalCloseBtn.focus();
 
-    const info = await getSpeciesInfo(species.id);
+    // A regional view (see speciesView) fetches that form's sheet.
+    const info = await getSpeciesInfo(species.id, species.form);
     if (speciesModalEl.hidden) return; // closed again before the fetch resolved
     speciesModalBodyEl.innerHTML = "";
     if (!info) {
@@ -1760,7 +2038,7 @@
       renderSpeciesModalBody(info, species);
     } catch (err) {
       // A thrown error here previously left the modal silently half-built (whatever appended
-      // before the throw stayed, everything after it just never ran) — surface it instead.
+      // before the throw stayed, everything after it just never ran). Surface it instead.
       console.error("CobbleSync: failed to render species modal", err);
       const errorEl = document.createElement("p");
       errorEl.className = "species-modal-description";
@@ -1776,7 +2054,7 @@
     const sprite = document.createElement("img");
     sprite.className = "species-modal-sprite";
     sprite.alt = currentLang === "fr" ? info.nameFr : info.nameEn;
-    if (info.nationalDexNumber) setSprite(sprite, info.nationalDexNumber, false);
+    if (info.nationalDexNumber) setSprite(sprite, info.nationalDexNumber, false, formRefOf(info));
     header.appendChild(sprite);
 
     const titleWrap = document.createElement("div");
@@ -1791,7 +2069,7 @@
 
     const nameEl = document.createElement("h2");
     nameEl.className = "species-modal-name";
-    nameEl.textContent = currentLang === "fr" ? info.nameFr : info.nameEn;
+    nameEl.textContent = speciesDisplayName(info);
     titleWrap.appendChild(nameEl);
 
     const typeRow = document.createElement("div");
@@ -1804,6 +2082,42 @@
 
     header.appendChild(titleWrap);
     speciesModalBodyEl.appendChild(header);
+
+    // Species with regional forms met: one tab for the standard form (named after its origin
+    // region), one per regional form ("Alola", "Paldea · Combat"), each with its own sheet.
+    const base = species.base || species;
+    const regionals = encounteredRegionals(base);
+    if (regionals.length > 0) {
+      const origin = ORIGIN_REGIONS[generationOf(base.nationalDexNumber) - 1];
+      const tabs = [{ label: origin ? origin[currentLang] : t("formNormal"), form: null }];
+      regionals.forEach((r) => r.groupForms.forEach((form) => {
+        const variant = formVariant({ region: r.region, form });
+        tabs.push({ label: variant ? `${regionLabel(r.region)} · ${variant}` : regionLabel(r.region), form });
+      }));
+
+      const switcher = document.createElement("div");
+      switcher.className = "form-switcher";
+      switcher.setAttribute("role", "tablist");
+      tabs.forEach(({ label, form }) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "form-switcher-btn";
+        btn.setAttribute("role", "tab");
+        const active = form === (species.form || null);
+        btn.setAttribute("aria-selected", String(active));
+        if (active) btn.classList.add("active");
+        // Mini sprite of the form: tells the tabs apart at a glance.
+        const icon = document.createElement("img");
+        icon.className = "form-switcher-icon";
+        icon.alt = "";
+        setSprite(icon, base.nationalDexNumber, false, form ? { region: regionals.find((r) => r.groupForms.includes(form)).region, form } : null);
+        btn.appendChild(icon);
+        btn.appendChild(document.createTextNode(label));
+        if (!active) btn.addEventListener("click", () => openSpeciesModal(speciesView(base, form), speciesModalTrigger));
+        switcher.appendChild(btn);
+      });
+      speciesModalBodyEl.insertBefore(switcher, header);
+    }
 
     const description = currentLang === "fr" ? info.descriptionFr : info.descriptionEn;
     if (description) {
@@ -1846,7 +2160,7 @@
       const evolutionSection = buildEvolutionSection(info);
       speciesModalBodyEl.appendChild(evolutionSection);
       // Branch-row indent needs the trunk's real rendered layout, which only exists once this
-      // subtree is actually attached to the visible document — see _alignEvolutionBranches.
+      // subtree is actually attached to the visible document, see _alignEvolutionBranches.
       if (evolutionSection._alignEvolutionBranches) evolutionSection._alignEvolutionBranches();
     }
 
@@ -1868,7 +2182,7 @@
   }
 
   /** One .stat-bars block (reused from buildStatsSection's markup) scaled to [max] instead of
-   * the base-stat ceiling — used for both the IV block (max 31) and EV block (max 252). */
+   * the base-stat ceiling. Used for both the IV block (max 31) and EV block (max 252). */
   function buildStatValueBars(values, max, color) {
     const wrap = document.createElement("div");
     wrap.className = "stat-bars";
@@ -1907,11 +2221,11 @@
   const EV_MAX = 252;
 
   /**
-   * Detail popup for one of THIS player's live party Pokémon (nature/ability/held item/IV-EV) —
-   * reuses the same modal shell as the species detail view (speciesModalEl/BodyEl/CloseBtn)
+   * Detail popup for one of THIS player's live party Pokémon (nature/ability/held item/IV-EV).
+   * Reuses the same modal shell as the species detail view (speciesModalEl/BodyEl/CloseBtn)
    * rather than a second modal element, since the open/close/backdrop/Escape wiring is already
-   * fully generic; only the content differs. Data comes straight from the team poll already in
-   * hand, so unlike openSpeciesModal there's no fetch/loading state to show.
+   * fully generic and only the content differs. Data comes straight from the team poll already
+   * in hand, so unlike openSpeciesModal there's no fetch/loading state to show.
    */
   function openPokemonModal(pokemon, triggerEl) {
     speciesModalPokemon = pokemon;
@@ -1927,7 +2241,7 @@
     const sprite = document.createElement("img");
     sprite.className = "species-modal-sprite";
     sprite.alt = pokemon.nameEn;
-    setSprite(sprite, pokemon.nationalDexNumber, pokemon.shiny);
+    setSprite(sprite, pokemon.nationalDexNumber, pokemon.shiny, formRefOf(pokemon));
     header.appendChild(sprite);
 
     const titleWrap = document.createElement("div");
@@ -1940,11 +2254,16 @@
 
     const nameEl = document.createElement("h2");
     nameEl.className = "species-modal-name";
-    nameEl.textContent = pokemon.nickname || (currentLang === "fr" ? pokemon.nameFr : pokemon.nameEn);
+    nameEl.textContent = pokemon.nickname || speciesDisplayName(pokemon, pokemon.speciesId);
     titleWrap.appendChild(nameEl);
 
     const badgeRow = document.createElement("div");
     badgeRow.className = "badge-row";
+    // The real form's types: an Alolan Vulpix is Ice, not Fire.
+    (pokemon.types || []).forEach((type) => {
+      const label = (TYPE_NAMES[type] && TYPE_NAMES[type][currentLang]) || type;
+      badgeRow.appendChild(badge(label, TYPE_COLORS[type] || { bg: "var(--neutral-bg)", fg: "var(--text-secondary)" }));
+    });
     if (pokemon.shiny) badgeRow.appendChild(badge("✨ Shiny", { bg: "var(--shiny-color)", fg: "#3a2b00" }));
     const genderGlyph = pokemon.gender === "MALE" ? "♂" : pokemon.gender === "FEMALE" ? "♀" : null;
     if (genderGlyph) badgeRow.appendChild(badge(genderGlyph, GENDER_COLORS[pokemon.gender]));
@@ -2024,7 +2343,7 @@
       icon.src = `/api/item/${pokemon.heldItemId}`;
       icon.addEventListener("error", () => { icon.style.display = "none"; });
       itemRow.appendChild(icon);
-      itemRow.appendChild(document.createTextNode(displayItemName(pokemon.heldItemId)));
+      itemRow.appendChild(document.createTextNode(itemName(pokemon.heldItemId, pokemon.heldItemNameEn, pokemon.heldItemNameFr)));
       itemItem.appendChild(itemRow);
     } else {
       const noneValue = document.createElement("span");
@@ -2051,17 +2370,15 @@
     speciesModalBodyEl.appendChild(ivEvWrap);
   }
 
-  async function enrichCard(card, species) {
-    const info = await getSpeciesInfo(species.id);
-    if (!info) return;
-
-    card._nameEl.textContent = currentLang === "fr" ? info.nameFr : info.nameEn;
-
-    if (info.nationalDexNumber) {
-      setSprite(card._sprite, info.nationalDexNumber, card._isShiny);
+  // Sprite and types straight from the pokedex payload: fetching each species' full detail here
+  // meant one heavy request per card. The detail is only loaded when its sheet is opened.
+  function enrichCard(card, species) {
+    const face = card._face || species;
+    if (species.nationalDexNumber) {
+      setSprite(card._sprite, species.nationalDexNumber, card._isShiny, formRefOf(face));
     }
 
-    info.types.forEach((type) => {
+    (face.types || []).forEach((type) => {
       const label = (TYPE_NAMES[type] && TYPE_NAMES[type][currentLang]) || type;
       card._typeRow.appendChild(badge(label, TYPE_COLORS[type] || { bg: "var(--neutral-bg)", fg: "var(--text-secondary)" }));
     });
@@ -2128,7 +2445,6 @@
   applyStaticI18n();
   loadPlayers();
   loadActivityFeed();
-  connectActivityEvents();
   loadLeaderboard();
-  connectLeaderboardEvents();
+  connectEvents();
 })();

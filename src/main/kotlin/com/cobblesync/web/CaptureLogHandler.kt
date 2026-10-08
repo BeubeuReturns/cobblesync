@@ -1,19 +1,23 @@
 package com.cobblesync.web
 
 import com.cobblesync.data.CaptureLog
+import com.cobblesync.data.CobblemonLang
+import com.cobblesync.data.RegionalForms
+import com.cobblesync.player.PlayerRegistry
+import com.cobblemon.mod.common.api.pokemon.PokemonSpecies
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
-import java.nio.charset.StandardCharsets
+import net.minecraft.resources.ResourceLocation
+import java.util.UUID
 
-/** Serves GET /api/capture-log and GET /api/capture-log/events (SSE) — the global activity feed. */
+/** Serves GET /api/capture-log, the global activity feed. Updates: see [DashboardEvents]. */
 class CaptureLogHandler : HttpHandler {
     override fun handle(exchange: HttpExchange) {
         val segments = exchange.requestURI.path.trim('/').split("/")
         when {
             segments.size == 2 -> handleLog(exchange)
-            segments.size == 3 && segments[2] == "events" -> handleEvents(exchange)
             else -> respondJson(exchange, 404, jsonError("Unknown route"))
         }
     }
@@ -27,7 +31,24 @@ class CaptureLogHandler : HttpHandler {
         CaptureLog.all().forEach { entry ->
             val obj = JsonObject()
             obj.addProperty("playerUuid", entry.playerUuid)
+            // Resolved here rather than client-side: the page's player list can be stale or empty
+            // when the feed renders (e.g. a freshly opened world).
+            runCatching { UUID.fromString(entry.playerUuid) }.getOrNull()
+                ?.let { PlayerRegistry.nameOf(it) }
+                ?.let { obj.addProperty("playerName", it) }
             obj.addProperty("speciesId", entry.speciesId)
+            // Name and dex number inline, so the feed doesn't fetch each species' full detail.
+            ResourceLocation.tryParse(entry.speciesId)?.let { PokemonSpecies.getByIdentifier(it) }?.let { species ->
+                obj.addProperty("nationalDexNumber", species.nationalPokedexNumber)
+                obj.addProperty("speciesNameEn", CobblemonLang.speciesNameEn(species.resourceIdentifier.path, species.name))
+                obj.addProperty("speciesNameFr", CobblemonLang.speciesNameFr(species.resourceIdentifier.path, species.name))
+                RegionalForms.formByName(species, entry.form)?.let { form ->
+                    RegionalForms.regionOf(form)?.let { region ->
+                        obj.addProperty("form", form.name)
+                        obj.addProperty("region", region)
+                    }
+                }
+            }
             obj.addProperty("shiny", entry.shiny)
             obj.addProperty("timestampMillis", entry.timestampMillis)
             array.add(obj)
@@ -35,28 +56,4 @@ class CaptureLogHandler : HttpHandler {
         respondJson(exchange, 200, array.toString())
     }
 
-    /** SSE: a signal (not a diff) that a new capture happened — the client refetches the log. */
-    private fun handleEvents(exchange: HttpExchange) {
-        exchange.responseHeaders.add("Content-Type", "text/event-stream; charset=utf-8")
-        exchange.responseHeaders.add("Cache-Control", "no-cache")
-        exchange.responseHeaders.add("Connection", "keep-alive")
-        exchange.sendResponseHeaders(200, 0)
-
-        val out = exchange.responseBody
-        CaptureLogBroadcaster.register(out)
-        try {
-            while (true) {
-                Thread.sleep(25_000)
-                synchronized(out) {
-                    out.write(":ping\n\n".toByteArray(StandardCharsets.UTF_8))
-                    out.flush()
-                }
-            }
-        } catch (e: Exception) {
-            // Client disconnected or server shutting down.
-        } finally {
-            CaptureLogBroadcaster.unregister(out)
-            exchange.close()
-        }
-    }
 }

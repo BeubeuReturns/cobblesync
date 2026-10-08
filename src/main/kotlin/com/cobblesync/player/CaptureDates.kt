@@ -23,11 +23,14 @@ object CaptureDates {
     ).type
 
     private val dates = ConcurrentHashMap<UUID, ConcurrentHashMap<String, Long>>()
-    private var storagePath: Path? = null
-    private val saver = DebouncedSaver { save() }
+    @Volatile private var storagePath: Path? = null
+    @Volatile private var saver: DebouncedSaver? = null
 
+    /** Called per world: in singleplayer the same JVM can open several saves in a row. */
     fun load(path: Path) {
+        dates.clear()
         storagePath = path
+        saver = DebouncedSaver { save() }
         if (!Files.exists(path)) return
         runCatching {
             Files.newBufferedReader(path).use { reader ->
@@ -39,18 +42,27 @@ object CaptureDates {
 
     fun get(uuid: UUID, speciesId: String): Long? = dates[uuid]?.get(speciesId)
 
-    /** All recorded entries for a player (plain "speciesId" and "speciesId#shiny" keys mixed). */
+    /** Key for a regional form's own first-capture date, alongside "speciesId" and "speciesId#shiny". */
+    fun regionalCaptureKey(speciesId: String, formName: String) = "$speciesId@$formName"
+
+    /** All recorded entries for a player ("speciesId", "speciesId#shiny" and "speciesId@Form" keys mixed). */
     fun entriesFor(uuid: UUID): Map<String, Long> = dates[uuid]?.toMap() ?: emptyMap()
 
     /** Returns true if this call actually recorded a new date (i.e. a genuinely new capture). */
     fun recordIfMissing(uuid: UUID, speciesId: String): Boolean {
         val perPlayer = dates.getOrPut(uuid) { ConcurrentHashMap() }
         val isNew = perPlayer.putIfAbsent(speciesId, System.currentTimeMillis()) == null
-        if (isNew) saver.requestSave()
+        if (isNew) saver?.requestSave()
         return isNew
     }
 
-    fun shutdown() = saver.shutdown()
+    /** Flushes pending writes, then forgets this world's data. */
+    fun shutdown() {
+        saver?.shutdown()
+        saver = null
+        storagePath = null
+        dates.clear()
+    }
 
     private fun save() {
         val path = storagePath ?: return

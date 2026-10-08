@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  /* Light blue-cyan tint (Pokédex screen) — B > G on purpose to avoid teal. */
+  /* Light blue-cyan tint (Pokédex screen), B > G on purpose to avoid teal. */
   --surface-1:      #f2fafd;
   --surface-2:      #e8f5fa;
   --text-primary:   #0b0b0b;
@@ -17,7 +17,7 @@
   --status-bad:     #c0392b;
   --neutral-bg:     rgba(82, 81, 78, 0.10);
   --shiny-color:    #e8b923;
-  /* Sequential ramp (single hue, light->dark) for base-stat bars — weakest to strongest.
+  /* Sequential ramp (single hue, light->dark) for base-stat bars, weakest to strongest.
      Validated with the dataviz skill's palette checker (ordinal mode). */
   --stat-tier-1: #e9897d;
   --stat-tier-2: #dd6459;
@@ -25,10 +25,12 @@
   --stat-tier-4: #b8241b;
   --stat-tier-5: #8f180f;
   --radius: 3px;
-  /* Monocraft (OFL) bundled in web/fonts/ — not on Google Fonts, unlike Press Start 2P before
+  /* Monocraft (OFL) bundled in web/fonts/, not on Google Fonts, unlike Press Start 2P before
      it. License in web/fonts/Monocraft-LICENSE.txt. */
   --font-pixel: "Monocraft", "Courier New", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-digital: var(--font-pixel);
+  /* Plain UI font for small secondary text: a pixel font turns to mush below its native grid. */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --bezel: #8b8f94;
   --bezel-dark: #55585c;
   --bezel-shadow: rgba(0, 0, 0, 0.35);
@@ -69,7 +71,7 @@
 }
 
 /* Monocraft is a pixel font but much more compact than Press Start 2P (normal code-font
-   proportions) — root size more generous than the previous setting. */
+   proportions), root size more generous than the previous setting. */
 html {
   font-size: 14px;
 }
@@ -138,7 +140,7 @@ body {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 0.86rem;
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
@@ -156,7 +158,7 @@ body {
   background: rgba(255, 255, 255, 0.18);
   color: #ffffff;
   font: inherit;
-  font-size: 0.6rem;
+  font-size: 0.86rem;
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -202,7 +204,7 @@ body {
 .subtitle {
   margin: 0.25rem 0 0.75rem;
   text-align: center;
-  font-size: 0.65rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
 }
 
@@ -243,7 +245,7 @@ body {
   font-weight: 600;
 }
 
-/* Persistent panels above the player tabs — server-wide, so they aren't tied to whichever
+/* Persistent panels above the player tabs, server-wide, so they aren't tied to whichever
    player is currently selected. Capped height with their own scrollbar to stay out of the way. */
 .activity-panel,
 .leaderboard-panel,
@@ -258,9 +260,9 @@ body {
 .activity-panel-header,
 .leaderboard-panel-header,
 .compare-panel-header {
-  font-size: 0.68rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.02em;
   margin-bottom: 0.4rem;
@@ -316,8 +318,8 @@ body {
 .leaderboard-value {
   flex: 0 0 auto;
   font-family: var(--font-digital);
-  color: var(--accent);
-  font-size: 0.78rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
 }
 
 .compare-selectors {
@@ -340,7 +342,7 @@ body {
 
 .compare-vs {
   flex: 0 0 auto;
-  font-size: 0.68rem;
+  font-size: 0.86rem;
   color: var(--text-muted);
 }
 
@@ -351,7 +353,7 @@ body {
 }
 
 .compare-column-header {
-  font-size: 0.68rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 0.35rem;
@@ -368,7 +370,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.3rem 0.5rem;
-  font-size: 0.72rem;
+  font-size: 0.86rem;
 }
 
 .compare-row-dex {
@@ -413,7 +415,7 @@ body {
 .activity-text {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 0.78rem;
+  font-size: 0.86rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -439,14 +441,14 @@ body {
 
 .activity-time {
   flex: 0 0 auto;
-  font-size: 0.62rem;
+  font-size: 0.86rem;
   font-family: var(--font-digital);
   color: var(--text-muted);
 }
 
 .empty-hint {
   padding: 1rem 0;
-  font-size: 0.7rem;
+  font-size: 0.86rem;
   line-height: 1.8;
   color: var(--text-muted);
 }
@@ -475,7 +477,7 @@ main#dashboard {
 
 .stat-label {
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: 0.86rem;
 }
 
 .stat-value {
@@ -503,14 +505,75 @@ main#dashboard {
   transition: width 0.2s ease;
 }
 
-/* Current team — hidden entirely when the player is offline or has an empty party (see
+/* Current team, hidden entirely when the player is offline or has an empty party (see
    renderTeam in app.js), rather than showing an empty/placeholder state. */
 .team-row {
   margin-bottom: 1.25rem;
 }
 
+/* PokeBadges (optional mod): one row per region, hidden when the mod isn't installed. */
+.badges-row {
+  margin-bottom: 1.25rem;
+}
+
+.badges-regions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.badge-region {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.6rem;
+}
+
+.badge-region-label {
+  flex: 0 0 5.5rem;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.badge-region-count {
+  font-family: var(--font-digital);
+  font-size: 0.86rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Single line even for Galar's 10 badges: icons shrink a little instead of wrapping. */
+.badge-region-slots {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.badge-slot {
+  flex: 0 1 24px;
+  min-width: 14px;
+  width: 24px;
+  aspect-ratio: 1;
+  object-fit: contain;
+  image-rendering: pixelated;
+  cursor: help;
+}
+
+/* Missing badges as a dim silhouette of the badge itself, so the slot still reads as "which one". */
+.badge-slot-missing {
+  filter: brightness(0) invert(0.75);
+  opacity: 0.55;
+}
+
 .team-row-label {
-  font-size: 0.72rem;
+  font-size: 0.95rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -560,7 +623,7 @@ main#dashboard {
 }
 
 .team-card-name {
-  font-size: 0.78rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-primary);
   overflow: hidden;
@@ -573,7 +636,7 @@ main#dashboard {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  font-size: 0.7rem;
+  font-size: 0.86rem;
 }
 
 .team-card-level {
@@ -596,7 +659,7 @@ main#dashboard {
 
 .team-card-hp-label {
   font-family: var(--font-digital);
-  font-size: 0.65rem;
+  font-size: 0.86rem;
   color: var(--text-muted);
 }
 
@@ -705,7 +768,7 @@ main#dashboard {
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.45);
   color: #ffffff;
-  font-size: 0.55rem;
+  font-size: 0.86rem;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -749,7 +812,7 @@ main#dashboard {
   color: var(--text-muted);
 }
 
-/* Name + status badge on the same row — the dex number moved onto the sprite (.dex-number
+/* Name + status badge on the same row, the dex number moved onto the sprite (.dex-number
    below) to make room. */
 .species-card-header {
   display: flex;
@@ -763,7 +826,7 @@ main#dashboard {
   position: absolute;
   top: 4px;
   left: 4px;
-  font-size: 0.62rem;
+  font-size: 0.86rem;
   font-family: var(--font-digital);
   font-variant-numeric: tabular-nums;
   color: #ffffff;
@@ -797,7 +860,7 @@ main#dashboard {
 }
 
 .badge {
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   white-space: nowrap;
@@ -816,10 +879,12 @@ main#dashboard {
   flex: 0 0 auto;
 }
 
+/* Own line under the name/status row: sharing it truncated names ("Germign..."). */
 .caught-date {
-  font-size: 0.62rem;
+  display: block;
+  font-size: 0.86rem;
   font-family: var(--font-digital);
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .badge-seen {
@@ -835,11 +900,66 @@ main#dashboard {
 }
 
 .badge-pill {
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   font-weight: 600;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
   white-space: nowrap;
+}
+
+/* Regional forms met for this species ("Alola", "Galar"); dashed when only seen. */
+.form-pill {
+  border: 1px solid var(--border);
+}
+
+.form-pill-seen {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+/* Form tabs on a grouped regional sheet (Paldean Tauros: Combat / Blaze / Aqua). */
+.form-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 2.5rem 1rem 0; /* clear of the close button */
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.form-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.35rem 1rem 0.35rem 0.4rem;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--neutral-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.form-switcher-btn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.form-switcher-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  cursor: default;
+}
+
+.form-switcher-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .badge-pill.has-tooltip,
@@ -850,9 +970,9 @@ main#dashboard {
 }
 
 /* .detail-heading, .field-label, .info-*, .spawn-*, .biomes-more, .form-row are all modal-only
-   now (the inline card "Détails ▾" expand that used to share them was removed) — sized larger
+   now (the inline card "Détails ▾" expand that used to share them was removed), sized larger
    than the compact-card era they were originally tuned for. */
-/* Same treatment for both — field-label (buildInfoSection/misc headings) and detail-heading
+/* Same treatment for both: field-label (buildInfoSection/misc headings) and detail-heading
    (forms) used to look inconsistent (one uppercase, one not) and both read too subtle against
    the larger body content beneath them. */
 .detail-heading,
@@ -887,7 +1007,7 @@ main#dashboard {
 }
 
 .info-label {
-  font-size: 0.78rem;
+  font-size: 0.86rem;
   color: var(--text-muted);
 }
 
@@ -898,13 +1018,13 @@ main#dashboard {
 
 .nature-stat-up {
   color: var(--status-good);
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 700;
 }
 
 .nature-stat-down {
   color: var(--status-bad);
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 700;
 }
 
@@ -940,14 +1060,14 @@ main#dashboard {
   gap: 0.3rem;
 }
 
-/* Label sits inline as the row's first item, not a separate heading line — keeps each category
+/* Label sits inline as the row's first item, not a separate heading line, keeps each category
    to roughly one line instead of two, which matters once there are a dozen+ categories. */
 .biome-group-row {
   align-items: center;
 }
 
 .biome-group-label {
-  font-size: 0.68rem;
+  font-size: 0.86rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -956,7 +1076,7 @@ main#dashboard {
 }
 
 .spawn-level {
-  font-size: 0.85rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
 }
 
@@ -966,7 +1086,7 @@ main#dashboard {
   background: var(--neutral-bg);
   border-radius: 999px;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-secondary);
   padding: 0.15rem 0.55rem;
@@ -993,7 +1113,7 @@ main#dashboard {
   color: var(--text-primary);
 }
 
-/* Badges are also used on the compact grid cards (types, gender/shiny) — only scale them up
+/* Badges are also used on the compact grid cards (types, gender/shiny), only scale them up
    inside the modal, where there's room. */
 .species-modal-content .badge-row {
   gap: 0.45rem;
@@ -1001,7 +1121,7 @@ main#dashboard {
 
 .species-modal-content .badge-pill,
 .species-modal-content .badge {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   padding: 0.25rem 0.65rem;
 }
 
@@ -1009,7 +1129,7 @@ main#dashboard {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: var(--neutral-bg);
@@ -1040,7 +1160,7 @@ main#dashboard {
 }
 
 .moves-subheading {
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -1066,7 +1186,7 @@ main#dashboard {
   display: flex;
   align-items: baseline;
   gap: 0.4rem;
-  font-size: 0.85rem;
+  font-size: 0.86rem;
   padding: 0.15rem 0;
   border-bottom: 1px solid var(--gridline);
   cursor: help;
@@ -1095,7 +1215,7 @@ main#dashboard {
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   padding: 0.6rem 0.7rem;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
 }
 
 .move-tooltip.is-visible {
@@ -1125,13 +1245,13 @@ main#dashboard {
 
 .move-tooltip-stat-lines {
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.86rem;
 }
 
 .move-tooltip-desc {
   color: var(--text-muted);
   font-style: italic;
-  font-size: 0.75rem;
+  font-size: 0.86rem;
   padding-top: 0.3rem;
   border-top: 1px solid var(--gridline);
   line-height: 1.35;
@@ -1142,7 +1262,7 @@ main#dashboard {
   font-family: var(--font-digital);
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.86rem;
 }
 
 .move-name {
@@ -1252,7 +1372,7 @@ main#dashboard {
   margin: 0 0 0.75rem;
 }
 
-/* Base stats — a single accent hue for all 6 bars (one series, not distinct categories), the
+/* Base stats: a single accent hue for all 6 bars (one series, not distinct categories), the
    exact fill/track pair the completion meter already uses. */
 .stat-bars {
   display: flex;
@@ -1269,7 +1389,7 @@ main#dashboard {
 }
 
 .stat-bar-label {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
 }
 
@@ -1322,7 +1442,7 @@ main#dashboard {
 }
 
 /* Alternative evolutions (e.g. Poliwhirl -> Poliwrath OR -> Politoed) get their own row instead
-   of chaining after the previous branch — a small indent + corner connector reads as "this is an
+   of chaining after the previous branch, a small indent + corner connector reads as "this is an
    alternative," not a continuation. margin-left is set inline via JS (_alignEvolutionBranches in
    app.js) to match the real rendered position of the first-evolution node above it, since a fixed
    indent can't line up with a trunk row whose width varies by species. */
@@ -1336,7 +1456,7 @@ main#dashboard {
   flex-direction: column;
   align-items: center;
   gap: 0.2rem;
-  width: 5.5rem;
+  width: 7rem;
   text-align: center;
 }
 
@@ -1353,7 +1473,7 @@ main#dashboard {
 }
 
 .evolution-node-name {
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1364,6 +1484,25 @@ main#dashboard {
 .evolution-node-current .evolution-node-name {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.evolution-node-clickable {
+  cursor: pointer;
+}
+
+.evolution-node-clickable:hover .evolution-node-sprite,
+.evolution-node-clickable:focus-visible .evolution-node-sprite {
+  box-shadow: 0 0 0 2px var(--text-secondary);
+}
+
+.evolution-node-clickable:hover .evolution-node-name,
+.evolution-node-clickable:focus-visible .evolution-node-name {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.evolution-node-clickable:focus-visible {
+  outline: none;
 }
 
 .evolution-arrow {
@@ -1385,6 +1524,35 @@ main#dashboard {
 }
 
 .evolution-arrow-label {
-  font-size: 0.68rem;
+  font-size: 0.86rem;
   white-space: nowrap;
+}
+
+/* Biome a regional evolution needs ("Plage"), under the item. */
+.evolution-arrow-biome {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* Readability: small secondary text (dates, counts, labels, descriptions) in a plain UI font.
+   Monocraft stays on titles, names, big numbers and controls, where it's large enough to read.
+   Kept last so it wins over the earlier per-component font-family declarations. */
+.subtitle,
+.activity-time,
+.caught-date,
+.dex-number,
+.empty-hint,
+.stat-label,
+.info-label,
+.leaderboard-value,
+.team-card-meta,
+.team-card-level,
+.team-card-hp-label,
+.badge-region-count,
+.move-level,
+.move-tooltip-stat-lines,
+.move-tooltip-desc,
+.species-modal-description,
+.evolution-arrow-label {
+  font-family: var(--font-ui);
 }

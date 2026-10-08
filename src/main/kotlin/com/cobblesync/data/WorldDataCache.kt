@@ -15,7 +15,7 @@ data class WorldSnapshot(
 
 /**
  * Cache of world data (dex entries, implemented species, spawn pool) that doesn't depend on the
- * player being queried — avoids rescanning it on every HTTP request. Invalidated when Cobblemon
+ * player being queried. Avoids rescanning it on every HTTP request. Invalidated when Cobblemon
  * reloads its data (see subscriptions in CobbleSync.kt).
  */
 object WorldDataCache {

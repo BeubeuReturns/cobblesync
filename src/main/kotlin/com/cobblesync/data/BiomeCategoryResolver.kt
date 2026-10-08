@@ -9,8 +9,8 @@ import net.minecraft.world.level.biome.Biome
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Classifies a biome into a broad category (forest, desert, ocean, ...) for badge coloring —
- * real vanilla biome tags first (mod-authored biomes, e.g. Terralith, tag themselves correctly
+ * Classifies a biome into a broad category (forest, desert, ocean, ...) for badge coloring.
+ * Real vanilla biome tags first (mod-authored biomes, e.g. Terralith, tag themselves correctly
  * for cross-mod compatibility, so this works for modded biomes too), falling back to a keyword
  * match on the biome's own path for the handful of common categories vanilla has no tag for at
  * all (desert, swamp, plains, snow, caves, mushroom).
@@ -27,8 +27,8 @@ object BiomeCategoryResolver {
     }
 
     // First match wins. Nether/end checked first since everything past that point is implicitly
-    // overworld — mirrors how the frontend used to special-case nether/end before falling back to
-    // a flat "overworld" bucket, just with real tags instead of a hardcoded name list now.
+    // overworld, mirroring how the frontend used to special-case nether/end before falling back
+    // to a flat "overworld" bucket, just with real tags instead of a hardcoded name list now.
     private val TAG_CATEGORIES: List<Pair<TagKey<Biome>, String>> = listOf(
         BiomeTags.IS_NETHER to "nether",
         BiomeTags.IS_END to "end",
@@ -95,6 +95,16 @@ object BiomeCategoryResolver {
     )
 
     fun categoryOf(biomeId: ResourceLocation): String = cache.getOrPut(biomeId) { resolve(biomeId) }
+
+    /** Distinct categories of a biome tag's members ("other" only if nothing better). */
+    fun categoriesOf(tag: TagKey<Biome>): List<String> {
+        val registry = registryAccess?.registryOrThrow(Registries.BIOME) ?: return emptyList()
+        val categories = registry.getTag(tag).map { set -> set.mapNotNull { it.unwrapKey().orElse(null)?.location() } }
+            .orElse(emptyList())
+            .map { categoryOf(it) }
+            .distinct()
+        return categories.filter { it != "other" }.ifEmpty { categories }
+    }
 
     // Not a real biome at all: CobbleSafari (and possibly other minigame-style addons) registers
     // per-type themed pseudo-dimensions as if they were biomes (cobblesafari:ghost,

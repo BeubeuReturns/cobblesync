@@ -5,18 +5,19 @@ import com.cobblesync.config.WebServerConfig
 import com.cobblesync.data.BiomeCategoryResolver
 import com.cobblesync.data.CaptureLog
 import com.cobblesync.data.ItemIconCache
+import com.cobblesync.data.RegionalForms
 import com.cobblesync.data.SpeciesInfoCache
 import com.cobblesync.data.WorldDataCache
 import com.cobblesync.discord.DiscordNotifier
+import com.cobblesync.integration.PokeBadgesIntegration
 import com.cobblesync.player.CaptureDates
 import com.cobblesync.player.PlayerRegistry
 import com.cobblesync.web.BroadcastExecutor
-import com.cobblesync.web.CaptureLogBroadcaster
 import com.cobblesync.web.CobbleSyncWebServer
-import com.cobblesync.web.LeaderboardBroadcaster
-import com.cobblesync.web.PokedexEventBroadcaster
+import com.cobblesync.web.DashboardEvents
 import com.cobblemon.mod.common.api.events.CobblemonEvents
 import com.cobblemon.mod.common.api.pokedex.Dexes
+import com.cobblemon.mod.common.api.pokedex.PokedexEntryProgress
 import com.cobblemon.mod.common.api.pokemon.PokemonSpecies
 import com.cobblemon.mod.common.api.spawning.CobblemonSpawnPools
 import net.fabricmc.api.ModInitializer
@@ -24,6 +25,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.server.MinecraftServer
+import net.minecraft.world.level.storage.LevelResource
 import org.slf4j.LoggerFactory
 
 object CobbleSync : ModInitializer {
@@ -40,12 +42,13 @@ object CobbleSync : ModInitializer {
     var server: MinecraftServer? = null
         private set
 
+    private var reloadHooksRegistered = false
+
     override fun onInitialize() {
         val config = WebServerConfig.loadOrCreate(configDir.resolve("webserver.conf"))
-        PlayerRegistry.load(configDir.resolve("players.json"))
-        CaptureDates.load(configDir.resolve("capture-dates.json"))
-        CaptureLog.load(configDir.resolve("capture-log.json"))
         DiscordNotifier.configure(DiscordConfig.loadOrCreate(configDir.resolve("discord.conf")))
+        PokeBadgesIntegration.configure(config.pokebadgesRegionOrder)
+        DashboardLink.register(config)
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
             val player = handler.player
@@ -56,10 +59,22 @@ object CobbleSync : ModInitializer {
             this.server = server
             BiomeCategoryResolver.configure(server.registryAccess())
 
-            // WORLD_SPAWN_POOL only exists from SERVER_STARTING onward.
-            Dexes.observable.subscribe { invalidateWorldCaches() }
-            PokemonSpecies.observable.subscribe { invalidateWorldCaches() }
-            CobblemonSpawnPools.WORLD_SPAWN_POOL.observable.subscribe { invalidateWorldCaches() }
+            // Per-world data lives in the save, not in config/: the pokedex itself is per world,
+            // so a shared history would leak captures between singleplayer saves.
+            val worldDataDir = server.getWorldPath(LevelResource.ROOT).resolve(MOD_ID)
+            PlayerRegistry.load(worldDataDir.resolve("players.json"))
+            CaptureDates.load(worldDataDir.resolve("capture-dates.json"))
+            CaptureLog.load(worldDataDir.resolve("capture-log.json"))
+            PokeBadgesIntegration.onServerStarted(server)
+
+            // WORLD_SPAWN_POOL only exists from SERVER_STARTING onward. Registered once: in
+            // singleplayer this event fires again for every world opened.
+            if (!reloadHooksRegistered) {
+                reloadHooksRegistered = true
+                Dexes.observable.subscribe { invalidateWorldCaches() }
+                PokemonSpecies.observable.subscribe { invalidateWorldCaches() }
+                CobblemonSpawnPools.WORLD_SPAWN_POOL.observable.subscribe { invalidateWorldCaches() }
+            }
 
             if (!config.enabled) {
                 LOGGER.info("Web server disabled in webserver.conf, not starting.")
@@ -79,26 +94,34 @@ object CobbleSync : ModInitializer {
             PlayerRegistry.shutdown()
             CaptureDates.shutdown()
             CaptureLog.shutdown()
+            PokeBadgesIntegration.onServerStopping()
+            // The next world may have different datapacks/addons.
+            invalidateWorldCaches()
         }
 
         CobblemonEvents.POKEDEX_DATA_CHANGED_POST.subscribe { event ->
             LOGGER.debug("Pokedex updated for {} (knowledge={})", event.playerUUID, event.knowledge)
-            PokedexEventBroadcaster.notifyUpdated(event.playerUUID)
+            DashboardEvents.pokedexUpdated(event.playerUUID)
 
-            // ordinal 2 == "caught" (see PokedexHandler.kt) — record the first time this
-            // happens for the species, since Cobblemon doesn't track a catch date itself.
-            if (event.knowledge.ordinal == 2) {
+            // Record the first time a species reaches "caught," since Cobblemon doesn't track a
+            // catch date itself. Cobblemon 1.8 confirmed PokedexEntryProgress's real constant
+            // names (UNREGISTERED/SEEN/OWNED) against the published jar, no more magic ordinal.
+            if (event.knowledge == PokedexEntryProgress.OWNED) {
                 val speciesId = event.dataSource.getApparentSpecies().resourceIdentifier.toString()
                 val isShiny = event.dataSource.pokemon.shiny
+                val regionalForm = event.dataSource.getApparentForm().takeIf { RegionalForms.isRegional(it) }?.name
                 val isNewCapture = CaptureDates.recordIfMissing(event.playerUUID, speciesId)
                 // Tracked separately from isNewCapture: a shiny catch is always log-worthy, even
                 // if the species was already caught in its normal form before.
                 val isNewShiny = isShiny && CaptureDates.recordIfMissing(event.playerUUID, "$speciesId#shiny")
+                // Regional forms have their own card, so their first capture is news too.
+                val isNewRegional = regionalForm != null &&
+                    CaptureDates.recordIfMissing(event.playerUUID, CaptureDates.regionalCaptureKey(speciesId, regionalForm))
 
-                if (isNewCapture || isNewShiny) {
-                    CaptureLog.add(event.playerUUID, speciesId, isShiny)
-                    CaptureLogBroadcaster.notifyNewEntry()
-                    LeaderboardBroadcaster.notifyChanged()
+                if (isNewCapture || isNewShiny || isNewRegional) {
+                    CaptureLog.add(event.playerUUID, speciesId, isShiny, regionalForm)
+                    DashboardEvents.captureLogUpdated()
+                    DashboardEvents.leaderboardUpdated()
                 }
 
                 // else-if: a species caught for the first time and shiny in the same event

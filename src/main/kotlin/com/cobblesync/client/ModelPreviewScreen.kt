@@ -16,7 +16,7 @@ import org.joml.Vector3f
  * Diagnostic only: renders continuously using the screen's own ambient GuiGraphics matrices/
  * lighting (the exact context PokedexScreen/PC screens use), no custom render target, no manual
  * projection/lighting setup, no screenshot. Purely to answer "does drawProfilePokemon even show
- * up when called the normal way" — press Escape to close.
+ * up when called the normal way." Press Escape to close.
  */
 class ModelPreviewScreen(private val speciesId: ResourceLocation) : Screen(Component.literal("CobbleSync model preview")) {
     private val state = FloatingState()

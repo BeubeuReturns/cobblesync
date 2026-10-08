@@ -14,7 +14,9 @@ data class CaptureLogEntry(
     val playerUuid: String,
     val speciesId: String,
     val shiny: Boolean,
-    val timestampMillis: Long
+    val timestampMillis: Long,
+    // Regional form name ("Alola"), null otherwise and in entries written before forms existed.
+    val form: String? = null
 )
 
 /**
@@ -28,11 +30,14 @@ object CaptureLog {
     private val listType = TypeToken.getParameterized(List::class.java, CaptureLogEntry::class.java).type
 
     private val entries = CopyOnWriteArrayList<CaptureLogEntry>()
-    private var storagePath: Path? = null
-    private val saver = DebouncedSaver { save() }
+    @Volatile private var storagePath: Path? = null
+    @Volatile private var saver: DebouncedSaver? = null
 
+    /** Called per world: in singleplayer the same JVM can open several saves in a row. */
     fun load(path: Path) {
+        entries.clear()
         storagePath = path
+        saver = DebouncedSaver { save() }
         if (!Files.exists(path)) return
         runCatching {
             Files.newBufferedReader(path).use { reader ->
@@ -42,15 +47,21 @@ object CaptureLog {
         }.onFailure { CobbleSync.LOGGER.warn("Failed to read capture-log.json", it) }
     }
 
-    fun add(playerUuid: UUID, speciesId: String, shiny: Boolean) {
-        entries.add(0, CaptureLogEntry(playerUuid.toString(), speciesId, shiny, System.currentTimeMillis()))
+    fun add(playerUuid: UUID, speciesId: String, shiny: Boolean, form: String? = null) {
+        entries.add(0, CaptureLogEntry(playerUuid.toString(), speciesId, shiny, System.currentTimeMillis(), form))
         while (entries.size > MAX_ENTRIES) entries.removeAt(entries.size - 1)
-        saver.requestSave()
+        saver?.requestSave()
     }
 
     fun all(): List<CaptureLogEntry> = entries.toList()
 
-    fun shutdown() = saver.shutdown()
+    /** Flushes pending writes, then forgets this world's data. */
+    fun shutdown() {
+        saver?.shutdown()
+        saver = null
+        storagePath = null
+        entries.clear()
+    }
 
     private fun save() {
         val path = storagePath ?: return

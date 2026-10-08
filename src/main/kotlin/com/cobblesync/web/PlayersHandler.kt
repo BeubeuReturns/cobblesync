@@ -6,7 +6,7 @@ import com.google.gson.JsonObject
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 
-/** Serves GET /api/players — players seen by the mod (uuid + name), for the dashboard tabs. */
+/** Serves GET /api/players: players seen by the mod (uuid + name), for the dashboard tabs. */
 class PlayersHandler : HttpHandler {
     override fun handle(exchange: HttpExchange) {
         if (exchange.requestMethod != "GET") {

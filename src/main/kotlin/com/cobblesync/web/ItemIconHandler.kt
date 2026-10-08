@@ -8,13 +8,13 @@ import com.sun.net.httpserver.HttpHandler
 import net.minecraft.resources.ResourceLocation
 
 /**
- * Serves GET /api/item/{id} (e.g. /api/item/cobblemon:moon_stone) — the item's own icon texture,
+ * Serves GET /api/item/{id} (e.g. /api/item/cobblemon:moon_stone), the item's own icon texture,
  * extracted straight from whatever mod jar bundles it (same classpath-resource technique
  * CobblemonLang already uses for lang files). No 3D rendering needed: items are flat textures,
  * unlike Pokémon models. Cached: see [ItemIconCache].
  *
  * Only works for items whose mod bundles its assets in one unified jar (true for Cobblemon, and
- * for well-behaved Fabric mods generally) — vanilla Minecraft items have no texture available
+ * for well-behaved Fabric mods generally). Vanilla Minecraft items have no texture available
  * server-side at all (client-only resources, not present in a dedicated server's classpath), so
  * those 404 and the frontend falls back to a text-only badge, same graceful-degradation pattern
  * used everywhere else in this project.
@@ -47,7 +47,7 @@ class ItemIconHandler : HttpHandler {
         }
 
         exchange.responseHeaders.add("Content-Type", "image/png")
-        // Static per server run (see ItemIconCache) — safe to let the browser cache aggressively,
+        // Static per server run (see ItemIconCache), safe to let the browser cache aggressively,
         // unlike the dashboard's own HTML/JS/CSS which admins may edit live.
         exchange.responseHeaders.add("Cache-Control", "public, max-age=3600")
         exchange.sendResponseHeaders(200, bytes.size.toLong())
