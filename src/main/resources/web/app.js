@@ -26,13 +26,6 @@
   const leaderboardListEl = document.getElementById("leaderboard-list");
   const leaderboardEmptyEl = document.getElementById("leaderboard-empty");
   const leaderboardTabButtons = document.querySelectorAll(".leaderboard-tabs .segmented-option");
-  const comparePanel = document.getElementById("compare-panel");
-  const compareASelect = document.getElementById("compare-a");
-  const compareBSelect = document.getElementById("compare-b");
-  const compareAHeader = document.getElementById("compare-a-header");
-  const compareBHeader = document.getElementById("compare-b-header");
-  const compareAList = document.getElementById("compare-a-list");
-  const compareBList = document.getElementById("compare-b-list");
   const speciesModalEl = document.getElementById("species-modal");
   const speciesModalBackdropEl = document.getElementById("species-modal-backdrop");
   const speciesModalCloseBtn = document.getElementById("species-modal-close");
@@ -80,9 +73,6 @@
       leaderboardShinyCount: "Shinys",
       leaderboardWeekly: "Cette semaine",
       leaderboardEmpty: "Aucune donnée pour cette catégorie.",
-      compareTitle: "Comparaison",
-      compareOnlyLabel: "Seulement chez",
-      compareNone: "Rien à montrer.",
       details: "Détails",
       forms: "Formes",
       infos: "Infos",
@@ -162,9 +152,6 @@
       leaderboardShinyCount: "Shinies",
       leaderboardWeekly: "This week",
       leaderboardEmpty: "No data for this category.",
-      compareTitle: "Comparison",
-      compareOnlyLabel: "Only in",
-      compareNone: "Nothing to show.",
       details: "Details",
       forms: "Forms",
       infos: "Info",
@@ -691,7 +678,6 @@
     loadActivityFeed();
     if (leaderboardData) renderLeaderboard();
     if (badgesData) renderBadges(badgesData);
-    if (!comparePanel.hidden) loadComparison();
     // Re-render in place rather than closing: getSpeciesInfo is cached, so this is free.
     if (!speciesModalEl.hidden && speciesModalSpecies) openSpeciesModal(speciesModalSpecies, speciesModalTrigger);
     // No fetch involved (the data came from the team poll, already in hand), just rebuild.
@@ -725,33 +711,6 @@
 
     dashboardEl.hidden = false;
     selectPlayer(players[0].uuid, tabsEl.querySelector(".player-tab[data-uuid]"));
-
-    populateCompareSelects();
-  }
-
-  function populateCompareSelects() {
-    comparePanel.hidden = knownPlayers.length < 2;
-    if (knownPlayers.length < 2) return;
-
-    const previousA = compareASelect.value;
-    const previousB = compareBSelect.value;
-
-    [compareASelect, compareBSelect].forEach((select) => {
-      select.innerHTML = "";
-      knownPlayers.forEach((player) => {
-        const opt = document.createElement("option");
-        opt.value = player.uuid;
-        opt.textContent = player.name;
-        select.appendChild(opt);
-      });
-    });
-
-    const hasA = knownPlayers.some((p) => p.uuid === previousA);
-    const hasB = knownPlayers.some((p) => p.uuid === previousB);
-    compareASelect.value = hasA ? previousA : knownPlayers[0].uuid;
-    compareBSelect.value = hasB ? previousB : knownPlayers[1].uuid;
-
-    loadComparison();
   }
 
   function selectPlayer(uuid, btn) {
@@ -876,57 +835,6 @@
     });
   }
 
-  // 1v1 comparison reuses /api/players/{uuid}/pokedex for both players, no dedicated
-  // endpoint, just a client-side diff. No SSE hookup: it's an on-demand check, not an
-  // ambient panel like activity/leaderboard, so a manual re-select is enough to refresh it.
-  async function loadComparison() {
-    const uuidA = compareASelect.value;
-    const uuidB = compareBSelect.value;
-    if (!uuidA || !uuidB) return;
-
-    const [resA, resB] = await Promise.all([
-      fetch(`/api/players/${uuidA}/pokedex`),
-      fetch(`/api/players/${uuidB}/pokedex`),
-    ]);
-    const dataA = await resA.json();
-    const dataB = await resB.json();
-    renderComparison(dataA, dataB);
-  }
-
-  function renderComparisonSide(listEl, headerEl, ownData, otherData, playerName) {
-    headerEl.textContent = `${t("compareOnlyLabel")} ${playerName}`;
-    listEl.innerHTML = "";
-
-    const onlyOwn = Object.entries(ownData.species)
-      .filter(([id, data]) => data.tier === "caught" && otherData.species[id]?.tier !== "caught")
-      .map(([id, data]) => ({ id, data }))
-      .sort((a, b) => (a.data.nationalDexNumber ?? 9999) - (b.data.nationalDexNumber ?? 9999));
-
-    if (onlyOwn.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "empty-hint";
-      empty.textContent = t("compareNone");
-      listEl.appendChild(empty);
-      return;
-    }
-
-    onlyOwn.forEach(({ id, data }) => {
-      const row = document.createElement("div");
-      row.className = "compare-row";
-      row.innerHTML = `<span class="compare-row-dex"></span><span class="compare-row-name"></span>`;
-      row.querySelector(".compare-row-dex").textContent = data.nationalDexNumber ? `#${String(data.nationalDexNumber).padStart(3, "0")}` : "";
-      row.querySelector(".compare-row-name").textContent = speciesDisplayName(data, id);
-      listEl.appendChild(row);
-    });
-  }
-
-  function renderComparison(dataA, dataB) {
-    const nameA = knownPlayers.find((p) => p.uuid === compareASelect.value)?.name || "?";
-    const nameB = knownPlayers.find((p) => p.uuid === compareBSelect.value)?.name || "?";
-    renderComparisonSide(compareAList, compareAHeader, dataA, dataB, nameA);
-    renderComparisonSide(compareBList, compareBHeader, dataB, dataA, nameB);
-  }
-
   async function loadBadges(uuid) {
     badgesRequestUuid = uuid;
     let data = null;
@@ -986,7 +894,7 @@
 
         const icon = document.createElement("img");
         icon.className = "badge-slot" + (owned ? "" : " badge-slot-missing");
-        icon.src = `/api/item/${shown.id}`;
+        icon.src = `/api/item/${shown.id}.png`;
         icon.alt = currentLang === "fr" ? shown.nameFr : shown.nameEn;
         icon.addEventListener("error", () => { icon.style.visibility = "hidden"; }, { once: true });
 
@@ -1527,7 +1435,8 @@
       // server-side at all). Hide the <img> rather than show a broken-image icon.
       const icon = document.createElement("img");
       icon.className = "item-chip-icon";
-      icon.src = `/api/item/${drop.item}`;
+      // ".png" so WAFs (CrowdSec http-crawl-non_statics) count icons as static files.
+      icon.src = `/api/item/${drop.item}.png`;
       icon.alt = "";
       icon.addEventListener("error", () => { icon.hidden = true; }, { once: true });
       chip.appendChild(icon);
@@ -2340,7 +2249,7 @@
       const icon = document.createElement("img");
       icon.className = "item-chip-icon";
       icon.alt = "";
-      icon.src = `/api/item/${pokemon.heldItemId}`;
+      icon.src = `/api/item/${pokemon.heldItemId}.png`;
       icon.addEventListener("error", () => { icon.style.display = "none"; });
       itemRow.appendChild(icon);
       itemRow.appendChild(document.createTextNode(itemName(pokemon.heldItemId, pokemon.heldItemNameEn, pokemon.heldItemNameFr)));
@@ -2433,8 +2342,6 @@
     });
   });
 
-  compareASelect.addEventListener("change", loadComparison);
-  compareBSelect.addEventListener("change", loadComparison);
 
   speciesModalCloseBtn.addEventListener("click", closeSpeciesModal);
   speciesModalBackdropEl.addEventListener("click", closeSpeciesModal);

@@ -248,8 +248,7 @@ body {
 /* Persistent panels above the player tabs, server-wide, so they aren't tied to whichever
    player is currently selected. Capped height with their own scrollbar to stay out of the way. */
 .activity-panel,
-.leaderboard-panel,
-.compare-panel {
+.leaderboard-panel {
   margin-bottom: 0.75rem;
   background: var(--neutral-bg);
   border: 1px solid var(--border);
@@ -258,8 +257,7 @@ body {
 }
 
 .activity-panel-header,
-.leaderboard-panel-header,
-.compare-panel-header {
+.leaderboard-panel-header {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-secondary);
@@ -269,8 +267,7 @@ body {
 }
 
 .activity-feed,
-.leaderboard-list,
-.compare-list {
+.leaderboard-list {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -322,70 +319,6 @@ body {
   font-size: 0.95rem;
 }
 
-.compare-selectors {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.compare-selectors select {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-1);
-  color: var(--text-primary);
-  font: inherit;
-}
-
-.compare-vs {
-  flex: 0 0 auto;
-  font-size: 0.86rem;
-  color: var(--text-muted);
-}
-
-.compare-results {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
-}
-
-.compare-column-header {
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 0.35rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.compare-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.3rem 0.5rem;
-  font-size: 0.86rem;
-}
-
-.compare-row-dex {
-  font-family: var(--font-digital);
-  color: var(--text-muted);
-  flex: 0 0 auto;
-}
-
-.compare-row-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .activity-row {
   display: flex;

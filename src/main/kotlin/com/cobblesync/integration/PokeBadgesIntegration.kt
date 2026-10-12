@@ -2,11 +2,13 @@ package com.cobblesync.integration
 
 import com.cobblesync.CobbleSync
 import com.cobblesync.data.LangFiles
+import com.cobblesync.discord.DiscordNotifier
 import com.cobblesync.web.DashboardEvents
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.item.Item
@@ -107,10 +109,13 @@ object PokeBadgesIntegration {
         savedData = null
     }
 
-    /** Award/remove/restore all just trigger the player's existing "pokedex-updated" SSE signal. */
+    /**
+     * Every badge change refreshes the player's dashboard ("pokedex-updated" signal). Awards and
+     * region completions also go to Discord.
+     */
     private fun registerEvents() {
         val events = runCatching { cls("api.event.PokeBadgesEvents") }.getOrNull() ?: return
-        for (kind in listOf("BadgeAwarded", "BadgeRemoved", "BadgeRestored")) {
+        for (kind in listOf("BadgeAwarded", "BadgeRemoved", "BadgeRestored", "RegionCompleted")) {
             runCatching {
                 val listenerType = cls("api.event.PokeBadgesEvents\$${kind}Listener")
                 val listener = Proxy.newProxyInstance(listenerType.classLoader, arrayOf(listenerType)) { proxy, method, args ->
@@ -119,7 +124,7 @@ object PokeBadgesIntegration {
                         "hashCode" -> System.identityHashCode(proxy)
                         "toString" -> "CobbleSync PokeBadges listener"
                         else -> {
-                            notifyPlayerOf(args?.getOrNull(0))
+                            onEvent(kind, args?.getOrNull(0))
                             null
                         }
                     }
@@ -129,10 +134,82 @@ object PokeBadgesIntegration {
         }
     }
 
-    private fun notifyPlayerOf(event: Any?) {
-        val player = event?.let { runCatching { it.javaClass.getMethod("player").invoke(it) }.getOrNull() } as? ServerPlayer
-        player?.let { DashboardEvents.pokedexUpdated(it.uuid) }
+    // Events are records: player(), region() (BadgeRegion, its id()), badgeId() for awards.
+    private fun onEvent(kind: String, event: Any?) {
+        event ?: return
+        fun field(name: String) = runCatching { event.javaClass.getMethod(name).invoke(event) }.getOrNull()
+        val player = field("player") as? ServerPlayer ?: return
+        DashboardEvents.pokedexUpdated(player.uuid)
+
+        val regionId = field("region")?.let { region -> runCatching { region.javaClass.getMethod("id").invoke(region) as String }.getOrNull() }
+            ?: return
+        runCatching {
+            when (kind) {
+                "BadgeAwarded" -> {
+                    val badgeId = field("badgeId") as? ResourceLocation ?: return
+                    DiscordNotifier.notifyBadge(player, badgeNotice(player.server, player.uuid, badgeId, regionId))
+                }
+                "RegionCompleted" -> DiscordNotifier.notifyRegionComplete(player, regionNotice(player.server, player.uuid, regionId))
+            }
+        }.onFailure { CobbleSync.LOGGER.warn("Couldn't build PokeBadges Discord message", it) }
     }
+
+    class BadgeNotice(
+        val badgeId: ResourceLocation,
+        val nameEn: String,
+        val nameFr: String,
+        val leaderEn: String?,
+        val leaderFr: String?,
+        val regionEn: String,
+        val regionFr: String,
+        val owned: Int?,
+        val total: Int?
+    )
+
+    class RegionNotice(val regionEn: String, val regionFr: String, val badgeIds: List<ResourceLocation>)
+
+    private fun badgeNotice(server: MinecraftServer, uuid: UUID, badgeId: ResourceLocation, regionId: String): BadgeNotice {
+        val path = badgeId.path
+        val meta = api?.let { api -> runCatching { api.metaGet.invoke(null, BuiltInRegistries.ITEM.get(badgeId)) }.getOrNull() }
+        val leader = meta?.let { runCatching { api!!.metaLeader.invoke(it) as String }.getOrNull() }
+
+        // Count from the same data as the dashboard. The event may fire before PokeBadges saves
+        // the badge, so this one counts as owned either way.
+        val slots = regionSlots(server, uuid, regionId)
+        val owned = slots?.let { list ->
+            val ids = list.mapNotNull { it.get("ownedBadgeId")?.asString }
+            (ids.size + if (badgeId.toString() in ids) 0 else 1).coerceAtMost(list.size)
+        }
+
+        return BadgeNotice(
+            badgeId = badgeId,
+            nameEn = lang("en_us", "item.$MOD_ID.$path") ?: path,
+            nameFr = lang("fr_fr", "item.$MOD_ID.$path") ?: lang("en_us", "item.$MOD_ID.$path") ?: path,
+            leaderEn = leader?.let { lang("en_us", "gymleader.$MOD_ID.$it") },
+            leaderFr = leader?.let { lang("fr_fr", "gymleader.$MOD_ID.$it") ?: lang("en_us", "gymleader.$MOD_ID.$it") },
+            regionEn = regionName("en_us", regionId),
+            regionFr = regionName("fr_fr", regionId),
+            owned = owned,
+            total = slots?.size
+        )
+    }
+
+    private fun regionNotice(server: MinecraftServer, uuid: UUID, regionId: String): RegionNotice {
+        val badgeIds = regionSlots(server, uuid, regionId).orEmpty()
+            .mapNotNull { slot -> slot.get("ownedBadgeId")?.asString?.let { ResourceLocation.tryParse(it) } }
+        return RegionNotice(regionName("en_us", regionId), regionName("fr_fr", regionId), badgeIds)
+    }
+
+    /** The region's slots as the dashboard sees them, null if the region isn't displayed. */
+    private fun regionSlots(server: MinecraftServer, uuid: UUID, regionId: String): List<JsonObject>? =
+        badgesJson(server, uuid).getAsJsonArray("regions")
+            ?.map { it.asJsonObject }
+            ?.firstOrNull { it.get("id").asString == regionId }
+            ?.getAsJsonArray("slots")
+            ?.map { it.asJsonObject }
+
+    private fun regionName(file: String, regionId: String): String =
+        lang(file, "region.$MOD_ID.$regionId") ?: regionId.replaceFirstChar { it.uppercase() }
 
     /** {available, regions: [{id, nameEn, nameFr, slots: [{badges: [...], ownedBadgeId?, obtainedAt?}]}]} */
     fun badgesJson(server: MinecraftServer?, uuid: UUID): JsonObject {

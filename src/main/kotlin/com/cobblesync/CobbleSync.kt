@@ -46,9 +46,10 @@ object CobbleSync : ModInitializer {
 
     override fun onInitialize() {
         val config = WebServerConfig.loadOrCreate(configDir.resolve("webserver.conf"))
-        DiscordNotifier.configure(DiscordConfig.loadOrCreate(configDir.resolve("discord.conf")))
+        DiscordNotifier.configure(DiscordConfig.loadOrCreate(configDir.resolve("discord.conf")), config.publicUrl)
         PokeBadgesIntegration.configure(config.pokebadgesRegionOrder)
         DashboardLink.register(config)
+        SpawnAnnouncer.register(config.spawnAnnouncements)
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
             val player = handler.player
@@ -124,15 +125,17 @@ object CobbleSync : ModInitializer {
                     DashboardEvents.leaderboardUpdated()
                 }
 
-                // else-if: a species caught for the first time and shiny in the same event
-                // should only post the shiny message, not both.
+                // One message at most: shiny wins over new species, and legendaries are posted
+                // from POKEMON_CAPTURED below instead.
                 val playerName = PlayerRegistry.nameOf(event.playerUUID) ?: event.playerUUID.toString()
-                if (isNewShiny) {
-                    DiscordNotifier.notifyShinyCaught(playerName, speciesId)
-                } else if (isNewCapture) {
-                    DiscordNotifier.notifyNewSpecies(playerName, speciesId)
-                }
+                DiscordNotifier.notifyCapture(event.playerUUID, playerName, event.dataSource.pokemon, isNewCapture, isNewShiny)
             }
+        }
+
+        // Every capture, already-owned species included (the pokedex event above only fires on
+        // a change): legendary and mythical catches are always news.
+        CobblemonEvents.POKEMON_CAPTURED.subscribe { event ->
+            DiscordNotifier.notifyRareCapture(event.player, event.pokemon)
         }
     }
 

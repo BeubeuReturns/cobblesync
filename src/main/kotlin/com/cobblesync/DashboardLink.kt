@@ -1,6 +1,7 @@
 package com.cobblesync
 
 import com.cobblesync.config.WebServerConfig
+import com.cobblesync.discord.DiscordNotifier
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
 import net.minecraft.ChatFormatting
@@ -10,6 +11,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.HoverEvent
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
+import java.util.UUID
 
 /** Clickable dashboard link in chat: sent on every join, and on demand with /cobblesync. */
 object DashboardLink {
@@ -27,7 +29,20 @@ object DashboardLink {
         // the model export lives under /cobblesyncexport).
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             dispatcher.register(
-                Commands.literal("cobblesync").executes { context ->
+                Commands.literal("cobblesync")
+                    .then(
+                        // Ops only: anyone else could spam the Discord channel.
+                        Commands.literal("discordtest").requires { it.hasPermission(2) }.executes { context ->
+                            val source = context.source
+                            val server = source.server
+                            val uuid = source.player?.uuid ?: UUID(0, 0)
+                            DiscordNotifier.sendTest(uuid, source.textName) { result ->
+                                server.execute { source.sendSystemMessage(Component.literal("[CobbleSync] $result")) }
+                            }
+                            1
+                        }
+                    )
+                    .executes { context ->
                     val source = context.source
                     val player = source.player
                     if (player != null) {

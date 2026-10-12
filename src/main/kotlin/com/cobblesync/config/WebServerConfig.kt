@@ -10,7 +10,8 @@ data class WebServerConfig(
     val bindAddress: String,
     val port: Int,
     val publicUrl: String,
-    val pokebadgesRegionOrder: List<String>
+    val pokebadgesRegionOrder: List<String>,
+    val spawnAnnouncements: List<String>
 ) {
     /** A setting added after the first release: written into older files that lack it. */
     private class LaterSetting(val key: String, val comment: String, val defaultValue: String)
@@ -39,7 +40,16 @@ data class WebServerConfig(
             "sinnoh,kanto,johto,hoenn,unova,kalos,galar,paldea"
         )
 
-        private val LATER_SETTINGS = listOf(PUBLIC_URL, REGION_ORDER)
+        private val SPAWN_ANNOUNCEMENTS = LaterSetting(
+            "spawn-announcements",
+            """
+            # Chat message + sound for every player when one of these spawns naturally.
+            # Values: shiny,legendary,mythical,ultra_beast,paradox. Leave empty to turn off.
+            """.trimIndent(),
+            "shiny,legendary,mythical"
+        )
+
+        private val LATER_SETTINGS = listOf(PUBLIC_URL, REGION_ORDER, SPAWN_ANNOUNCEMENTS)
 
         fun loadOrCreate(path: Path): WebServerConfig {
             val properties = Properties()
@@ -59,6 +69,8 @@ data class WebServerConfig(
                 port = properties.getProperty("port", DEFAULT_PORT.toString()).toIntOrNull() ?: DEFAULT_PORT,
                 publicUrl = later(PUBLIC_URL).trim().trimEnd('/'),
                 pokebadgesRegionOrder = later(REGION_ORDER).split(",")
+                    .map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct(),
+                spawnAnnouncements = later(SPAWN_ANNOUNCEMENTS).split(",")
                     .map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
             )
 
@@ -92,7 +104,8 @@ data class WebServerConfig(
             port=$port
         """.trimIndent().replace("\n", System.lineSeparator()) + System.lineSeparator() +
             block(PUBLIC_URL, publicUrl) +
-            block(REGION_ORDER, pokebadgesRegionOrder.joinToString(","))
+            block(REGION_ORDER, pokebadgesRegionOrder.joinToString(",")) +
+            block(SPAWN_ANNOUNCEMENTS, spawnAnnouncements.joinToString(","))
         Files.writeString(path, content)
     }
 }

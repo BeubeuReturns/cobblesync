@@ -5,7 +5,11 @@ import com.sun.net.httpserver.HttpHandler
 import java.nio.file.Files
 import java.nio.file.Path
 
-class StaticFileHandler(private val webRoot: Path) : HttpHandler {
+class StaticFileHandler(webRoot: Path) : HttpHandler {
+    // A dedicated server's config dir is relative ("./config"), and normalize() strips the "./",
+    // so the startsWith check below only works against an absolute, normalized root.
+    private val webRoot: Path = webRoot.toAbsolutePath().normalize()
+
     override fun handle(exchange: HttpExchange) {
         var relative = exchange.requestURI.path.removePrefix("/")
         if (relative.isEmpty()) relative = "index.html"
