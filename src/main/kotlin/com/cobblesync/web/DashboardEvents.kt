@@ -46,7 +46,15 @@ object DashboardEvents : HttpHandler {
         connections.clear()
     }
 
+    // Each stream holds one server thread for its lifetime: capped so a flood of connections
+    // can't exhaust threads (see the executor in CobbleSyncWebServer). Far above real use.
+    const val MAX_CONNECTIONS = 100
+
     override fun handle(exchange: HttpExchange) {
+        if (connections.size >= MAX_CONNECTIONS) {
+            respondJson(exchange, 503, jsonError("Too many live connections"))
+            return
+        }
         exchange.responseHeaders.add("Content-Type", "text/event-stream; charset=utf-8")
         exchange.responseHeaders.add("Cache-Control", "no-cache")
         exchange.responseHeaders.add("Connection", "keep-alive")

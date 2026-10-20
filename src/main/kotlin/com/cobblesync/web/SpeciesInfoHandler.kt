@@ -22,9 +22,17 @@ import com.cobblemon.mod.common.pokemon.evolution.variants.TradeEvolution
 import com.cobblemon.mod.common.api.conditional.RegistryLikeCondition
 import com.cobblemon.mod.common.api.conditional.RegistryLikeIdentifierCondition
 import com.cobblemon.mod.common.api.conditional.RegistryLikeTagCondition
+import com.cobblemon.mod.common.api.spawning.TimeRange
 import com.cobblemon.mod.common.pokemon.requirements.BiomeRequirement
 import com.cobblemon.mod.common.pokemon.requirements.FriendshipRequirement
+import com.cobblemon.mod.common.pokemon.requirements.HeldItemRequirement
 import com.cobblemon.mod.common.pokemon.requirements.LevelRequirement
+import com.cobblemon.mod.common.pokemon.requirements.MoveSetRequirement
+import com.cobblemon.mod.common.pokemon.requirements.MoveTypeRequirement
+import com.cobblemon.mod.common.pokemon.requirements.PartyMemberRequirement
+import com.cobblemon.mod.common.pokemon.requirements.PokemonPropertiesRequirement
+import com.cobblemon.mod.common.pokemon.requirements.TimeRangeRequirement
+import com.cobblemon.mod.common.pokemon.requirements.WeatherRequirement
 import net.minecraft.world.level.biome.Biome
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -93,8 +101,19 @@ class SpeciesInfoHandler : HttpHandler {
             ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
             ?.takeIf { it.isNotBlank() }
 
-        val cacheKey = if (formName == null) resourceLocation.toString() else "$resourceLocation#$formName"
-        val root = SpeciesInfoCache.getOrCompute(cacheKey) { buildSpeciesInfo(resourceLocation, formName) }
+        val species = PokemonSpecies.getByIdentifier(resourceLocation)
+        if (species == null) {
+            respondJson(exchange, 404, jsonError("Unknown species"))
+            return
+        }
+        // Only regional forms have their own sheet; anything else shows the standard form.
+        val form = RegionalForms.formByName(species, formName)?.takeIf { RegionalForms.isRegional(it) }
+            ?: species.standardForm
+
+        // Keyed by the form actually served, never by the raw parameter: arbitrary ?form= values
+        // would otherwise each add a ~40 KB entry, an easy way to exhaust the server's memory.
+        val cacheKey = if (form === species.standardForm) resourceLocation.toString() else "$resourceLocation#${form.name}"
+        val root = SpeciesInfoCache.getOrCompute(cacheKey) { buildSpeciesInfo(resourceLocation, species, form) }
         if (root == null) {
             respondJson(exchange, 404, jsonError("Unknown species"))
             return
@@ -103,11 +122,7 @@ class SpeciesInfoHandler : HttpHandler {
         respondJson(exchange, 200, root.toString())
     }
 
-    private fun buildSpeciesInfo(resourceLocation: ResourceLocation, formName: String?): JsonObject? {
-        val species = PokemonSpecies.getByIdentifier(resourceLocation) ?: return null
-        // Only regional forms have their own sheet; anything else shows the standard form.
-        val form = RegionalForms.formByName(species, formName)?.takeIf { RegionalForms.isRegional(it) }
-            ?: species.standardForm
+    private fun buildSpeciesInfo(resourceLocation: ResourceLocation, species: Species, form: FormData): JsonObject? {
         val region = RegionalForms.regionOf(form)
 
         val root = JsonObject()
@@ -439,7 +454,9 @@ class SpeciesInfoHandler : HttpHandler {
                         trigger.addProperty("level", levelReq.minLevel)
                     }
                     friendshipReq != null -> trigger.addProperty("kind", "friendship")
-                    else -> trigger.addProperty("kind", "other")
+                    // No level: a level-up under other conditions (held item, time...), listed
+                    // separately in "conditions".
+                    else -> trigger.addProperty("kind", "levelup")
                 }
             }
             is TradeEvolution -> trigger.addProperty("kind", "trade")
@@ -463,7 +480,66 @@ class SpeciesInfoHandler : HttpHandler {
             biomeCategoriesJson(req.biomeCondition)?.let { trigger.add("biomes", it) }
             biomeCategoriesJson(req.biomeAnticondition)?.let { trigger.add("notBiomes", it) }
         }
+        val conditions = JsonArray()
+        evolution.requirements.forEach { req -> conditionJson(req)?.let { conditions.add(it) } }
+        if (conditions.size() > 0) trigger.add("conditions", conditions)
         return trigger
+    }
+
+    /**
+     * The other requirements worth showing, {kind, ...}: held item (Electabuzz trades holding an
+     * Electirizer), time of day, known move or move type, party member, weather, gender.
+     * Rare or very technical ones (structures, blocks traveled...) are left out.
+     */
+    private fun conditionJson(req: Any): JsonObject? {
+        val obj = JsonObject()
+        when (req) {
+            is HeldItemRequirement -> {
+                val item = req.itemCondition.items().orElse(null)?.firstOrNull()?.value() ?: return null
+                val itemId = BuiltInRegistries.ITEM.getKey(item)
+                obj.addProperty("kind", "held")
+                obj.addProperty("item", itemId.toString())
+                ItemNames.addTo(obj, itemId, "item")
+            }
+            is TimeRangeRequirement -> {
+                // Stored as raw tick ranges: find which named range ("day", "night"...) it was.
+                val name = TimeRange.timeRanges.entries.firstOrNull { it.value.ranges == req.range.ranges }?.key ?: return null
+                obj.addProperty("kind", "time")
+                obj.addProperty("time", name)
+            }
+            is MoveSetRequirement -> {
+                obj.addProperty("kind", "move")
+                obj.addProperty("nameEn", CobblemonLang.moveNameEn(req.move.name))
+                obj.addProperty("nameFr", CobblemonLang.moveNameFr(req.move.name))
+            }
+            is MoveTypeRequirement -> {
+                obj.addProperty("kind", "moveType")
+                obj.addProperty("type", req.type.name)
+            }
+            is PartyMemberRequirement -> {
+                if (!req.contains) return null
+                val species = RegionalForms.resolve(req.target)?.first ?: return null
+                obj.addProperty("kind", "party")
+                obj.addProperty("nameEn", CobblemonLang.speciesNameEn(species.resourceIdentifier.path, species.name))
+                obj.addProperty("nameFr", CobblemonLang.speciesNameFr(species.resourceIdentifier.path, species.name))
+            }
+            is WeatherRequirement -> {
+                val weather = when {
+                    req.isThundering == true -> "thunder"
+                    req.isRaining == true -> "rain"
+                    else -> return null
+                }
+                obj.addProperty("kind", "weather")
+                obj.addProperty("weather", weather)
+            }
+            is PokemonPropertiesRequirement -> {
+                val gender = req.target.gender ?: return null
+                obj.addProperty("kind", "gender")
+                obj.addProperty("gender", gender.name)
+            }
+            else -> return null
+        }
+        return obj
     }
 
     private fun biomeCategoriesJson(condition: RegistryLikeCondition<Biome>?): JsonArray? {

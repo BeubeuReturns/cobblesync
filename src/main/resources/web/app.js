@@ -295,6 +295,7 @@
     trade: { fr: "Échange", en: "Trade" },
     item: { fr: "Objet", en: "Item" },
     friendship: { fr: "Bonheur", en: "Friendship" },
+    levelup: { fr: "Montée de niveau", en: "Level up" },
     other: { fr: "Condition spéciale", en: "Special condition" },
   };
 
@@ -1770,6 +1771,39 @@
     return null;
   }
 
+  const TIME_NAMES = {
+    day: { fr: "le jour", en: "daytime" },
+    night: { fr: "la nuit", en: "at night" },
+    dawn: { fr: "à l'aube", en: "at dawn" },
+    dusk: { fr: "au crépuscule", en: "at dusk" },
+    twilight: { fr: "au crépuscule", en: "at twilight" },
+    morning: { fr: "le matin", en: "in the morning" },
+    noon: { fr: "à midi", en: "at noon" },
+    afternoon: { fr: "l'après-midi", en: "in the afternoon" },
+    midnight: { fr: "à minuit", en: "at midnight" },
+  };
+
+  // Other evolution requirements, one short line each: "tenant Électriseur", "la nuit",
+  // "connaît Pouvoir Antique".
+  function evolutionConditionLabels(trigger) {
+    const fr = currentLang === "fr";
+    return (trigger.conditions || []).map((c) => {
+      switch (c.kind) {
+        case "held": return `${fr ? "tenant" : "holding"} ${itemName(c.item, c.itemNameEn, c.itemNameFr)}`;
+        case "time": return (TIME_NAMES[c.time] && TIME_NAMES[c.time][currentLang]) || c.time;
+        case "move": return `${fr ? "connaît" : "knows"} ${fr ? c.nameFr : c.nameEn}`;
+        case "moveType": {
+          const type = (TYPE_NAMES[c.type] && TYPE_NAMES[c.type][currentLang]) || c.type;
+          return fr ? `capacité ${type}` : `knows a ${type} move`;
+        }
+        case "party": return `${fr ? "avec" : "with"} ${fr ? c.nameFr : c.nameEn} ${fr ? "dans l'équipe" : "in party"}`;
+        case "weather": return c.weather === "thunder" ? (fr ? "sous l'orage" : "in a thunderstorm") : (fr ? "sous la pluie" : "in the rain");
+        case "gender": return c.gender === "FEMALE" ? (fr ? "femelle" : "female") : (fr ? "mâle" : "male");
+        default: return null;
+      }
+    }).filter(Boolean);
+  }
+
   function buildEvolutionNode(ref, current) {
     const node = document.createElement("div");
     node.className = "evolution-node" + (current ? " evolution-node-current" : "");
@@ -1823,13 +1857,12 @@
       label.className = "evolution-arrow-label";
       label.textContent = evolutionTriggerLabel(trigger);
       arrow.appendChild(label);
-      const biomes = evolutionBiomeLabel(trigger);
-      if (biomes) {
-        const biomeEl = document.createElement("span");
-        biomeEl.className = "evolution-arrow-label evolution-arrow-biome";
-        biomeEl.textContent = biomes;
-        arrow.appendChild(biomeEl);
-      }
+      [...evolutionConditionLabels(trigger), evolutionBiomeLabel(trigger)].filter(Boolean).forEach((text) => {
+        const conditionEl = document.createElement("span");
+        conditionEl.className = "evolution-arrow-label evolution-arrow-biome";
+        conditionEl.textContent = text;
+        arrow.appendChild(conditionEl);
+      });
     }
     return arrow;
   }

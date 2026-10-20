@@ -2,6 +2,7 @@ package com.cobblesync.data
 
 import com.cobblesync.CobbleSync
 import com.google.gson.JsonParser
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.ResourceLocation
 
 /**
@@ -12,7 +13,10 @@ import net.minecraft.resources.ResourceLocation
  * mods). Vanilla item textures are client-only, absent from a dedicated server: those give null.
  */
 object ItemIcons {
-    fun png(id: ResourceLocation): ByteArray? = ItemIconCache.getOrCompute(id) { resolve(id) }
+    // Registered items only: the cache also remembers misses, and arbitrary ids from web requests
+    // would grow it without bound.
+    fun png(id: ResourceLocation): ByteArray? =
+        if (BuiltInRegistries.ITEM.containsKey(id)) ItemIconCache.getOrCompute(id) { resolve(id) } else null
 
     private fun resolve(id: ResourceLocation): ByteArray? {
         // Common case: texture directly at textures/item/<path>.png.

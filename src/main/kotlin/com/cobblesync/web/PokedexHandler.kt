@@ -12,6 +12,7 @@ import com.cobblesync.data.PlayerProgress
 import com.cobblesync.data.WorldDataCache
 import com.cobblesync.integration.PokeBadgesIntegration
 import com.cobblesync.player.CaptureDates
+import com.cobblesync.player.PlayerRegistry
 import com.cobblemon.mod.common.Cobblemon
 import com.cobblemon.mod.common.api.pokedex.FormDexRecord
 import com.cobblemon.mod.common.api.pokedex.PokedexEntryProgress
@@ -72,12 +73,7 @@ class PokedexHandler : HttpHandler {
             return
         }
 
-        val uuid = try {
-            UUID.fromString(rawUuid)
-        } catch (e: IllegalArgumentException) {
-            respondJson(exchange, 400, jsonError("Invalid UUID"))
-            return
-        }
+        val uuid = knownPlayer(exchange, rawUuid) ?: return
 
         val pokedex = Cobblemon.playerDataManager.getPokedexData(uuid)
         val world = WorldDataCache.get()
@@ -274,13 +270,26 @@ class PokedexHandler : HttpHandler {
             respondJson(exchange, 405, jsonError("Method not allowed"))
             return
         }
-        val uuid = try {
-            UUID.fromString(rawUuid)
-        } catch (e: IllegalArgumentException) {
-            respondJson(exchange, 400, jsonError("Invalid UUID"))
-            return
-        }
+        val uuid = knownPlayer(exchange, rawUuid) ?: return
         respondJson(exchange, 200, PokeBadgesIntegration.badgesJson(CobbleSync.server, uuid).toString())
+    }
+
+    /**
+     * Only players who joined this world (see [PlayerRegistry]). Cobblemon's getPokedexData()
+     * loads or creates data for any UUID it's given, so random UUIDs would pile up in memory.
+     * Responds 400/404 itself and returns null when the request must stop.
+     */
+    private fun knownPlayer(exchange: HttpExchange, rawUuid: String): UUID? {
+        val uuid = runCatching { UUID.fromString(rawUuid) }.getOrNull()
+        if (uuid == null) {
+            respondJson(exchange, 400, jsonError("Invalid UUID"))
+            return null
+        }
+        if (PlayerRegistry.nameOf(uuid) == null) {
+            respondJson(exchange, 404, jsonError("Unknown player"))
+            return null
+        }
+        return uuid
     }
 
     /**
@@ -296,12 +305,7 @@ class PokedexHandler : HttpHandler {
             return
         }
 
-        val uuid = try {
-            UUID.fromString(rawUuid)
-        } catch (e: IllegalArgumentException) {
-            respondJson(exchange, 400, jsonError("Invalid UUID"))
-            return
-        }
+        val uuid = knownPlayer(exchange, rawUuid) ?: return
 
         val player = CobbleSync.server?.playerList?.getPlayer(uuid)
         val root = JsonObject()
